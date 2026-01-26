@@ -1,0 +1,198 @@
+name: Project Board Automation
+
+on:
+  issues:
+    types: [opened, labeled, unlabeled, closed, reopened]
+  pull_request:
+    types: [opened, closed, merged]
+
+jobs:
+  automate-board:
+    runs-on: ubuntu-latest
+    name: Automate Project Board
+    steps:
+      - name: Move new issues to Backlog
+        if: github.event.action == 'opened' && github.event.issue
+        uses: actions/add-to-project@v0.5.0
+        with:
+          project-url: https://github.com/users/acortinasm/projects/1
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Move to In Progress
+        if: |
+          github.event.action == 'labeled' &&
+          github.event.label.name == 'status:in-progress'
+        uses: actions/add-to-project@v0.5.0
+        with:
+          project-url: https://github.com/users/acortinasm/projects/1
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Move to Done
+        if: github.event.action == 'closed' && github.event.issue
+        uses: actions/add-to-project@v0.5.0
+        with:
+          project-url: https://github.com/users/acortinasm/projects/1
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add sprint label from title
+        if: |
+          github.event.action == 'opened' &&
+          contains(github.event.issue.title, '[Sprint')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.issue.title;
+            const match = title.match(/\[Sprint (\d+)\]/);
+            if (match) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                labels: ['sprint']
+              });
+            }
+
+  check-sprint-health:
+    runs-on: ubuntu-latest
+    name: Sprint Health Check
+    # Run daily at 9 AM UTC
+    schedule:
+      - cron: '0 9 * * *'
+    steps:
+      - name: Check for stale in-progress issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'status:in-progress'
+            });
+            
+            const now = new Date();
+            const fiveDaysAgo = new Date(now - 5 * 24 * 60 * 60 * 1000);
+            
+            for (const issue of issues.data) {
+              const updatedAt = new Date(issue.updated_at);
+              if (updatedAt < fiveDaysAgo) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: '⚠️ This issue has been in progress for more than 5 days without updates. Please provide a status update or consider if it should be blocked.'
+                });
+              }
+            }
+
+  notify-blocked-issues:
+    runs-on: ubuntu-latest
+    name: Notify Blocked Issues
+    if: |
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'status:blocked'
+    steps:
+      - name: Notify on Slack
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "🚫 Issue Blocked: ${{ github.event.issue.title }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Issue Blocked*\n<${{ github.event.issue.html_url }}|${{ github.event.issue.title }}>\n\nPlease review and unblock ASAP."
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  sprint-burndown:
+    runs-on: ubuntu-latest
+    name: Generate Sprint Burndown
+    # Run every day at end of work day (6 PM UTC)
+    schedule:
+      - cron: '0 18 * * *'
+    steps:
+      - name: Calculate burndown
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const milestones = await github.rest.issues.listMilestones({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open'
+            });
+            
+            for (const milestone of milestones.data) {
+              const issues = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                milestone: milestone.number,
+                state: 'all'
+              });
+              
+              const total = issues.data.length;
+              const closed = issues.data.filter(i => i.state === 'closed').length;
+              const open = total - closed;
+              
+              console.log(`Milestone: ${milestone.title}`);
+              console.log(`Total: ${total}, Closed: ${closed}, Open: ${open}`);
+              console.log(`Progress: ${Math.round(closed/total * 100)}%`);
+            }
+
+  auto-link-related-issues:
+    runs-on: ubuntu-latest
+    name: Auto-link Related Issues
+    if: github.event.action == 'opened' && github.event.issue
+    steps:
+      - name: Find and link related issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            const matches = body.match(/#\d+/g) || [];
+            
+            if (matches.length > 0) {
+              const relatedIssues = matches.join(', ');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                body: `🔗 Related issues detected: ${relatedIssues}`
+              });
+            }
+
+  validate-issue-format:
+    runs-on: ubuntu-latest
+    name: Validate Issue Format
+    if: github.event.action == 'opened' && github.event.issue
+    steps:
+      - name: Check issue has required labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const labels = issue.labels.map(l => l.name);
+            
+            const hasPhase = labels.some(l => l.startsWith('fase-'));
+            const hasCategory = labels.some(l => l.startsWith('categoria:'));
+            const hasStatus = labels.some(l => l.startsWith('status:'));
+            
+            if (!hasPhase || !hasCategory || !hasStatus) {
+              const missing = [];
+              if (!hasPhase) missing.push('fase-X');
+              if (!hasCategory) missing.push('categoria:*');
+              if (!hasStatus) missing.push('status:*');
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `⚠️ This issue is missing required labels: ${missing.join(', ')}\n\nPlease add them for proper tracking.`
+              });
+            }
