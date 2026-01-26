@@ -1,0 +1,44 @@
+[package]
+name = "neural-cli"
+description = "CLI and demo executable for NeuralGraphDB"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "neuralgraph"
+path = "src/main.rs"
+
+[dependencies]
+neural-core.workspace = true
+neural-storage.workspace = true
+neural-parser = { path = "../neural-parser" }
+neural-executor = { path = "../neural-executor" }
+serde_json.workspace = true
+serde.workspace = true
+bincode.workspace = true
+openraft = { version = "0.9", features = ["serde"] }
+anyerror = "0.1"
+
+# Interactive CLI
+rustyline = "15"
+colored = "3"
+indicatif = "0.17"
+dirs = "6"
+
+# Web server
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["fs", "cors"] }
+futures = "0.3"
+
+# Arrow Flight & gRPC
+arrow.workspace = true
+arrow-flight.workspace = true
+tonic.workspace = true
+prost.workspace = true
+
+[build-dependencies]
+tonic-build = "0.12"

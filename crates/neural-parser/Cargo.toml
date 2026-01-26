@@ -1,0 +1,16 @@
+[package]
+name = "neural-parser"
+description = "NGQL parser for NeuralGraphDB - lexer and AST"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+logos = "0.15"
+thiserror.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

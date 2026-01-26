@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArXiv Search - NeuralGraphDB</title>
+    <style>
+        :root {
+            --bg-primary: #0f0f1a;
+            --bg-secondary: #1a1a2e;
+            --bg-card: #252540;
+            --accent: #7c3aed;
+            --accent-light: #a78bfa;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border: #3f3f5a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, var(--accent-light), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .search-box {
+            background: var(--bg-secondary);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid var(--border);
+        }
+
+        .search-input-wrapper {
+            display: flex;
+            gap: 1rem;
+        }
+
+        #searchInput {
+            flex: 1;
+            padding: 1rem 1.5rem;
+            font-size: 1.1rem;
+            border: 2px solid var(--border);
+            border-radius: 0.75rem;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: border-color 0.2s;
+        }
+
+        #searchInput:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        #searchInput::placeholder {
+            color: var(--text-secondary);
+        }
+
+        button {
+            padding: 1rem 2rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 0.75rem;
+            background: linear-gradient(135deg, var(--accent), #9333ea);
+            color: white;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(124, 58, 237, 0.3);
+        }
+
+        .stats {
+            display: flex;
+            gap: 2rem;
+            justify-content: center;
+            margin-top: 1rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .stats span {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .results-header h2 {
+            font-size: 1.5rem;
+        }
+
+        .results-count {
+            color: var(--text-secondary);
+        }
+
+        .papers-grid {
+            display: grid;
+            gap: 1.5rem;
+        }
+
+        .paper-card {
+            background: var(--bg-card);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+            transition: transform 0.2s, border-color 0.2s;
+            cursor: pointer;
+        }
+
+        .paper-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--accent);
+        }
+
+        .paper-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: var(--accent-light);
+        }
+
+        .paper-abstract {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 1rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .paper-meta {
+            display: flex;
+            gap: 1.5rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .paper-score {
+            background: var(--accent);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-weight: 600;
+        }
+
+        .similarity-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .similarity-high {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
+
+        .similarity-medium {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+        }
+
+        .similarity-low {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+        }
+
+        .similarity-bar {
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            margin-top: 0.75rem;
+            overflow: hidden;
+        }
+
+        .similarity-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        .distance-text {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--accent);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state h3 {
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .back-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            margin-bottom: 1rem;
+        }
+
+        .back-btn:hover {
+            background: var(--bg-card);
+            box-shadow: none;
+            transform: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 ArXiv Search</h1>
+            <p class="subtitle">Semantic search over ArXiv papers powered by NeuralGraphDB</p>
+        </header>
+
+        <div class="search-box">
+            <div class="search-input-wrapper">
+                <input type="text" id="searchInput"
+                    placeholder="Search papers... e.g., 'transformer attention mechanism'" autofocus>
+                <button onclick="search()">Search</button>
+            </div>
+            <div class="stats">
+                <span>📄 <span id="totalPapers">-</span> papers</span>
+                <span>🔗 <span id="totalEdges">-</span> citations</span>
+            </div>
+        </div>
+
+        <div id="backBtnContainer" style="display: none;">
+            <button class="back-btn" onclick="showAllPapers()">← Back to all papers</button>
+        </div>
+
+        <div class="results-header">
+            <h2 id="resultsTitle">Papers</h2>
+            <span class="results-count" id="resultsCount"></span>
+        </div>
+
+        <div id="results" class="papers-grid">
+            <div class="loading">Loading papers</div>
+        </div>
+    </div>
+
+    <script>
+        let allPapers = [];
+
+        async function init() {
+            try {
+                const res = await fetch('/api/papers');
+                allPapers = await res.json();
+                document.getElementById('totalPapers').textContent = allPapers.length;
+                document.getElementById('totalEdges').textContent = '-';
+                showPapers(allPapers.slice(0, 50));
+            } catch (e) {
+                document.getElementById('results').innerHTML =
+                    '<div class="empty-state"><h3>Error loading papers</h3><p>' + e.message + '</p></div>';
+            }
+        }
+
+        function showPapers(papers, title = 'Papers') {
+            const container = document.getElementById('results');
+            document.getElementById('resultsTitle').textContent = title;
+            document.getElementById('resultsCount').textContent = papers.length + ' results';
+
+            if (papers.length === 0) {
+                container.innerHTML = '<div class="empty-state"><h3>No papers found</h3><p>Try a different search query</p></div>';
+                return;
+            }
+
+            container.innerHTML = papers.map(p => {
+                const distance = p.distance !== undefined ? p.distance : null;
+                // Only treat score as similarity if distance is present (vector search)
+                const isVectorSimilarity = distance !== null;
+                const similarity = isVectorSimilarity && p.score !== undefined ? p.score : null;
+                const similarityPct = similarity !== null ? Math.round(similarity * 100) : null;
+
+                // Text search score (when no distance)
+                const textScore = !isVectorSimilarity && p.score !== undefined ? p.score : null;
+
+                // Determine color class based on similarity
+                let colorClass = '';
+                let barColor = 'var(--accent)';
+                if (similarityPct !== null) {
+                    if (similarityPct >= 75) {
+                        colorClass = 'similarity-high';
+                        barColor = '#10b981';
+                    } else if (similarityPct >= 50) {
+                        colorClass = 'similarity-medium';
+                        barColor = '#f59e0b';
+                    } else {
+                        colorClass = 'similarity-low';
+                        barColor = '#ef4444';
+                    }
+                }
+
+                return `
+                    <div class="paper-card" onclick="findSimilar('${p.id}')">
+                        <div class="paper-title">${escapeHtml(p.title || p.id)}</div>
+                        <div class="paper-abstract">${escapeHtml(p.abstract_text || 'No abstract available')}</div>
+                        <div class="paper-meta">
+                            <span>📝 ${p.id}</span>
+                            ${similarityPct !== null ? `
+                                <span class="similarity-badge ${colorClass}">
+                                    ${similarityPct}% similar
+                                </span>
+                                <span class="distance-text">Distance: ${distance.toFixed(3)}</span>
+                            ` : ''}
+                            ${textScore !== null ? `<span class="paper-score">Match: ${textScore.toFixed(1)}</span>` : ''}
+                            ${p.word_count ? `<span>📊 ${p.word_count} words</span>` : ''}
+                        </div>
+                        ${similarityPct !== null ? `
+                            <div class="similarity-bar">
+                                <div class="similarity-bar-fill" style="width: ${similarityPct}%; background: ${barColor};"></div>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function search() {
+            const query = document.getElementById('searchInput').value.trim();
+            if (!query) {
+                showAllPapers();
+                return;
+            }
+
+            document.getElementById('results').innerHTML = '<div class="loading">Searching</div>';
+            document.getElementById('backBtnContainer').style.display = 'block';
+
+            try {
+                const res = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, limit: 20 })
+                });
+                const data = await res.json();
+                showPapers(data.papers, `Search: "${query}"`);
+            } catch (e) {
+                document.getElementById('results').innerHTML =
+                    '<div class="empty-state"><h3>Search error</h3><p>' + e.message + '</p></div>';
+            }
+        }
+
+        async function findSimilar(paperId) {
+            document.getElementById('results').innerHTML = '<div class="loading">Finding similar papers</div>';
+            document.getElementById('backBtnContainer').style.display = 'block';
+
+            try {
+                const res = await fetch(`/api/similar/${paperId}`);
+                const data = await res.json();
+                showPapers(data.papers, `Similar to: ${paperId}`);
+            } catch (e) {
+                document.getElementById('results').innerHTML =
+                    '<div class="empty-state"><h3>Error</h3><p>' + e.message + '</p></div>';
+            }
+        }
+
+        function showAllPapers() {
+            document.getElementById('backBtnContainer').style.display = 'none';
+            document.getElementById('searchInput').value = '';
+            showPapers(allPapers.slice(0, 50));
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Enter key to search
+        document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') search();
+        });
+
+        // Initialize
+        init();
+    </script>
+</body>
+
+</html>

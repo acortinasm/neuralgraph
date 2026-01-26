@@ -1,0 +1,4 @@
+pyarrow>=14.0.0
+pandas
+torch
+requests

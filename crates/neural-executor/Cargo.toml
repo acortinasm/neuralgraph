@@ -1,0 +1,18 @@
+[package]
+name = "neural-executor"
+description = "Query planner and executor for NeuralGraphDB"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+neural-core.workspace = true
+neural-storage = { path = "../neural-storage" }
+neural-parser = { path = "../neural-parser" }
+thiserror.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

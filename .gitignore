@@ -1,0 +1,16 @@
+# Benchmarks
+benchmark/
+benchmarks/ldbc/data/
+falkordb-data/
+neo4j-data/
+neuralgraph-cache/
+
+# Rust
+/target
+**/*.rs.bk
+*.pdb
+**/mutants.out*/
+.idea/
+.DS_Store
+data/
+benchmark/neo4j_data/transactions

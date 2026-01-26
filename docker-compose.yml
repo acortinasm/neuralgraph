@@ -1,0 +1,29 @@
+# =============================================================================
+# NeuralGraphDB Docker Compose
+# =============================================================================
+#
+# Usage:
+#   docker-compose up -d        # Start in background
+#   docker-compose run neuralgraph --demo    # Run demo
+#   docker-compose run neuralgraph           # Interactive REPL
+#   docker-compose down         # Stop
+# =============================================================================
+
+version: '3.8'
+
+services:
+  neuralgraph:
+    build: .
+    image: neuralgraph:0.1.0
+    stdin_open: true
+    tty: true
+    volumes:
+      # Mount local data directory for CSV files
+      - ./data:/data
+      # Persist HuggingFace dataset cache
+      - neuralgraph-cache:/root/.cache/neuralgraph
+    working_dir: /data
+
+volumes:
+  neuralgraph-cache:
+    driver: local

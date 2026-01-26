@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package raft;
+
+// The Raft service definition.
+service Raft {
+  // Appends log entries to a follower.
+  rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse);
+
+  // Installs a snapshot on a follower.
+  rpc InstallSnapshot(InstallSnapshotRequest) returns (InstallSnapshotResponse);
+
+  // Requests a vote from a peer.
+  rpc Vote(VoteRequest) returns (VoteResponse);
+
+  // Cluster management RPCs
+  // Join allows a new node to join an existing cluster.
+  rpc Join(JoinRequest) returns (JoinResponse);
+
+  // GetClusterInfo returns current cluster state (leader, members, term).
+  rpc GetClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse);
+
+  // HealthCheck checks the health status of a node.
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// The request message containing the serialized AppendEntriesRequest.
+message AppendEntriesRequest {
+  bytes data = 1;
+}
+
+// The response message containing the serialized AppendEntriesResponse.
+message AppendEntriesResponse {
+  bytes data = 1;
+}
+
+// The request message containing the serialized InstallSnapshotRequest.
+message InstallSnapshotRequest {
+  bytes data = 1;
+}
+
+// The response message containing the serialized InstallSnapshotResponse.
+message InstallSnapshotResponse {
+  bytes data = 1;
+}
+
+// The request message containing the serialized VoteRequest.
+message VoteRequest {
+  bytes data = 1;
+}
+
+// The response message containing the serialized VoteResponse.
+message VoteResponse {
+  bytes data = 1;
+}
+
+// ============================================================================
+// Cluster Management Messages
+// ============================================================================
+
+// Request to join an existing cluster.
+message JoinRequest {
+  uint64 node_id = 1;
+  string addr = 2;
+}
+
+// Response to a join request.
+message JoinResponse {
+  bool success = 1;
+  uint64 leader_id = 2;
+  string leader_addr = 3;
+  repeated NodeInfo members = 4;
+  string error = 5;
+}
+
+// Information about a node in the cluster.
+message NodeInfo {
+  uint64 id = 1;
+  string addr = 2;
+  bool is_leader = 3;
+}
+
+// Request for cluster information.
+message ClusterInfoRequest {}
+
+// Response containing cluster information.
+message ClusterInfoResponse {
+  uint64 leader_id = 1;
+  string leader_addr = 2;
+  repeated NodeInfo members = 3;
+  uint64 term = 4;
+}
+
+// Health check request.
+message HealthCheckRequest {
+  uint64 node_id = 1;
+}
+
+// Health check response.
+message HealthCheckResponse {
+  bool healthy = 1;
+  uint64 term = 2;
+  string state = 3;  // "leader", "follower", "candidate", "learner"
+  uint64 last_log_index = 4;
+}
