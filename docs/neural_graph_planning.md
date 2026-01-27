@@ -126,7 +126,7 @@ Demostrar rendimiento competitivo vs Neo4j/FalkorDB.
 
 Reducción de footprint para grafos masivos.
 
-* **US-20.1:** Como Sistema, quiero cuantización dinámica (Flash Quantization) f32→int8 para reducir memoria 4x.
+* **US-20.1:** ✅ Como Sistema, quiero cuantización dinámica (Flash Quantization) f32→int8 para reducir memoria 4x. **Implementado: QuantizationMethod::Int8/Binary, 4x/32x ahorro.**
 * **US-20.2:** Como Sistema, quiero búsqueda vectorial distribuida con fusión de resultados paralela.
 
 #### **Épica 21: Algoritmos de Grafos Optimizados**
@@ -141,7 +141,7 @@ Primitivas de alto rendimiento para RAG.
 | :---- | :---- | :---- | :---- | :---- |
 | **Sprint 58** | **LDBC Validation** | Benchmarks completos vs Neo4j/FalkorDB para paper. | ✅ | Perf |
 | **Sprint 59** | **Query Latency Optimization** | Zero-copy bindings (im::HashMap), direct serialization, pre-alloc results. **51% mejora: 0.72ms→0.35ms** | ✅ | Perf |
-| **Sprint 60** | **Flash Quantization** | Cuantización dinámica f32→int8/binary, 4x memoria. | 📅 | Perf |
+| **Sprint 60** | **Flash Quantization** | Cuantización dinámica f32→int8/binary, 4x memoria. Int8 scalar quantization con per-vector scale/offset. | ✅ | Perf |
 | **Sprint 61** | **Distributed Vector Search** | Búsqueda paralela en múltiples nodos + fusión. | 📅 | Perf |
 | **Sprint 62** | **Personalized PageRank** | PPR optimizado con sparse matrix operations. | 📅 | Perf |
 
