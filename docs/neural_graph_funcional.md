@@ -1,8 +1,8 @@
 # **NeuralGraphDB: Documento de Especificación Funcional**
 
-Versión: 4.2
+Versión: 4.3
 Fecha: 2026-01-27
-Estado: Fase 6 (Infraestructura Distribuida) En Progreso - v0.9.3
+Estado: Fase 7 (Rendimiento y Escala) En Progreso - v0.9.4
 
 ## **1\. Resumen Ejecutivo**
 
@@ -199,6 +199,20 @@ CONFIG { "extract\_strategy": "graph\_rag\_triplets" }
 | COUNT(*) | <50ms | <1ms ✅ |
 | Vector Search | <50ms | ~10ms (100k nodos) ✅ |
 | Streaming | - | O(1) memoria para scans lineales ✅ |
+
+### LDBC-SNB Benchmark (SF1: 10K persons, 192K edges)
+
+| Query | Category | p50 (ms) | p95 (ms) | p99 (ms) |
+| :---- | :---- | :---- | :---- | :---- |
+| IS1 (Profile) | Interactive Short | 0.64 | 0.71 | 0.71 |
+| IS2-IS7 | Interactive Short | 0.63-0.66 | 0.68-0.77 | 0.70-0.84 |
+| IC1-IC7 | Interactive Complex | 0.63-0.68 | 0.68-0.80 | 0.68-0.85 |
+
+**Highlights:**
+- 14 LDBC-SNB queries validated
+- Sub-millisecond p50 latency across all queries
+- Reproducible results (3 executions, std < 0.07ms)
+- Paper-ready visualizations in `benchmarks/ldbc/results/`
 
 ## **8\. Glosario Técnico**
 

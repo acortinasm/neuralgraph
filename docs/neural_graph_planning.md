@@ -2,7 +2,7 @@
 
 Metodología: Agile / Scrum (Sprints de 2 semanas)
 Duración Total Estimada: 29 Meses (73 Sprints)
-Versión: 7.1
+Versión: 7.2
 Última Actualización: 2026-01-27
 
 **Criterio de Priorización:** Infraestructura → Performance → AI
@@ -56,7 +56,7 @@ Versión: 7.1
 | **Sprint 41** | Native Leiden | Parallel Leiden on PCSR. | ✅ |
 | **Sprint 42** | Context Summary | `SUMMARIZE` clause & subgraphs. | ✅ |
 | **Sprint 43** | Python Client 2.0 | Pipeline `MATCH...CREATE` & fixes. | ✅ |
-| **Sprint 44** | Validation (LDBC) | Benchmarks vs Neo4j/FalkorDB. | 🔄 |
+| **Sprint 44** | Validation (LDBC) | Benchmarks vs Neo4j/FalkorDB. | ✅ |
 | **Sprint 45** | Read Latency | Arrow Flight implementation. | ✅ |
 | **Sprint 46** | Core Stability | Parser fixes & Cypher compliance. | ✅ |
 | **Sprint 47** | Vector Scale | 1M Vectors Optimization & LSM-VEC. | ✅ |
@@ -118,7 +118,7 @@ Escalabilidad más allá de un solo nodo.
 
 Demostrar rendimiento competitivo vs Neo4j/FalkorDB.
 
-* **US-19.1:** Como Investigador, quiero benchmarks LDBC validados para el paper académico.
+* **US-19.1:** ✅ Como Investigador, quiero benchmarks LDBC validados para el paper académico.
 * **US-19.2:** Como Sistema, quiero optimización de queries para workloads OLTP y OLAP.
 
 #### **Épica 20: Optimización de Memoria**
@@ -138,7 +138,7 @@ Primitivas de alto rendimiento para RAG.
 
 | Sprint | Foco Principal | Entregable Clave | Estado | Categoría |
 | :---- | :---- | :---- | :---- | :---- |
-| **Sprint 58** | **LDBC Validation** | Benchmarks completos vs Neo4j/FalkorDB para paper. | 📅 | Perf |
+| **Sprint 58** | **LDBC Validation** | Benchmarks completos vs Neo4j/FalkorDB para paper. | ✅ | Perf |
 | **Sprint 59** | **Flash Quantization** | Cuantización dinámica f32→int8/binary, 4x memoria. | 📅 | Perf |
 | **Sprint 60** | **Distributed Vector Search** | Búsqueda paralela en múltiples nodos + fusión. | 📅 | Perf |
 | **Sprint 61** | **Personalized PageRank** | PPR optimizado con sparse matrix operations. | 📅 | Perf |
