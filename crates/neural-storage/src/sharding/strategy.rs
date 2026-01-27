@@ -182,6 +182,164 @@ impl PartitionStrategy for RangePartition {
 }
 
 // =============================================================================
+// Community-based Partitioning (Graph-Aware)
+// =============================================================================
+
+/// Community-based partition strategy for minimizing edge cuts.
+///
+/// Uses the Leiden algorithm to detect communities and assigns entire
+/// communities to shards. This keeps connected nodes together, minimizing
+/// the number of edges that cross shard boundaries.
+///
+/// # Example
+///
+/// ```ignore
+/// use neural_storage::sharding::{CommunityPartition, PartitionStrategy};
+/// use neural_core::{NodeId, Edge};
+///
+/// let edges = vec![
+///     Edge::new(0, 1), Edge::new(1, 2), // community 1
+///     Edge::new(3, 4), Edge::new(4, 5), // community 2
+/// ];
+/// let partition = CommunityPartition::from_edges(&edges, 6, 4);
+/// // Nodes in same community will be on same shard
+/// ```
+#[derive(Debug, Clone)]
+pub struct CommunityPartition {
+    /// Number of shards
+    num_shards: u32,
+    /// Node ID -> Shard ID assignment
+    node_to_shard: Vec<ShardId>,
+}
+
+impl CommunityPartition {
+    /// Creates a community partition from edges.
+    ///
+    /// Uses Leiden algorithm to detect communities, then assigns communities
+    /// to shards using greedy bin-packing to balance load.
+    pub fn from_edges(edges: &[neural_core::Edge], num_nodes: usize, num_shards: u32) -> Self {
+        use crate::community::detect_communities_leiden;
+
+        // Convert Edge to (usize, usize) format for Leiden
+        let edge_pairs: Vec<(usize, usize)> = edges
+            .iter()
+            .map(|e| (e.source.as_usize(), e.target.as_usize()))
+            .collect();
+
+        // Detect communities
+        let communities = detect_communities_leiden(&edge_pairs, num_nodes);
+
+        // Assign communities to shards using greedy bin-packing
+        let node_to_shard = Self::assign_communities_to_shards(
+            communities.assignments(),
+            communities.num_communities(),
+            num_shards,
+        );
+
+        Self {
+            num_shards,
+            node_to_shard,
+        }
+    }
+
+    /// Creates a partition with pre-computed assignments.
+    pub fn with_assignments(assignments: Vec<ShardId>, num_shards: u32) -> Self {
+        Self {
+            num_shards,
+            node_to_shard: assignments,
+        }
+    }
+
+    /// Assigns communities to shards using greedy bin-packing.
+    ///
+    /// Sorts communities by size (descending) and assigns each to the
+    /// shard with the smallest current load.
+    fn assign_communities_to_shards(
+        node_communities: &[usize],
+        num_communities: usize,
+        num_shards: u32,
+    ) -> Vec<ShardId> {
+        if node_communities.is_empty() {
+            return vec![];
+        }
+
+        // Count nodes per community
+        let mut community_sizes: Vec<(usize, usize)> = (0..num_communities)
+            .map(|c| {
+                let count = node_communities.iter().filter(|&&x| x == c).count();
+                (c, count)
+            })
+            .collect();
+
+        // Sort by size descending (largest first for better bin-packing)
+        community_sizes.sort_by(|a, b| b.1.cmp(&a.1));
+
+        // Track shard loads
+        let mut shard_loads: Vec<usize> = vec![0; num_shards as usize];
+
+        // Assign communities to shards
+        let mut community_to_shard: Vec<ShardId> = vec![0; num_communities];
+        for (community_id, size) in community_sizes {
+            // Find shard with minimum load
+            let min_shard = shard_loads
+                .iter()
+                .enumerate()
+                .min_by_key(|&(_, load)| *load)
+                .map(|(idx, _)| idx)
+                .unwrap_or(0);
+
+            community_to_shard[community_id] = min_shard as ShardId;
+            shard_loads[min_shard] += size;
+        }
+
+        // Map nodes to shards via their communities
+        node_communities
+            .iter()
+            .map(|&community| community_to_shard[community])
+            .collect()
+    }
+
+    /// Returns the percentage of edges that cross shard boundaries.
+    pub fn edge_cut_percentage(&self, edges: &[neural_core::Edge]) -> f64 {
+        if edges.is_empty() {
+            return 0.0;
+        }
+
+        let cross_shard = edges
+            .iter()
+            .filter(|e| {
+                let s1 = self.shard_for_node(e.source);
+                let s2 = self.shard_for_node(e.target);
+                s1 != s2
+            })
+            .count();
+
+        (cross_shard as f64 / edges.len() as f64) * 100.0
+    }
+}
+
+impl PartitionStrategy for CommunityPartition {
+    fn shard_for_node(&self, node_id: NodeId) -> ShardId {
+        self.node_to_shard
+            .get(node_id.as_usize())
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn num_shards(&self) -> u32 {
+        self.num_shards
+    }
+
+    fn describe(&self) -> String {
+        format!(
+            "CommunityPartition(shards={}, nodes={})",
+            self.num_shards,
+            self.node_to_shard.len()
+        )
+    }
+}
+
+// =============================================================================
 // Tests
 // =============================================================================
 
@@ -272,5 +430,85 @@ mod tests {
     fn test_all_shards() {
         let partition = HashPartition::new(3);
         assert_eq!(partition.all_shards(), vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn test_community_partition_basic() {
+        use neural_core::Edge;
+
+        // Two clear communities: {0,1,2} and {3,4,5}
+        // Connected internally, with one bridge edge
+        let edges = vec![
+            // Community 1
+            Edge::new(0u64, 1u64), Edge::new(1u64, 0u64),
+            Edge::new(1u64, 2u64), Edge::new(2u64, 1u64),
+            Edge::new(0u64, 2u64), Edge::new(2u64, 0u64),
+            // Community 2
+            Edge::new(3u64, 4u64), Edge::new(4u64, 3u64),
+            Edge::new(4u64, 5u64), Edge::new(5u64, 4u64),
+            Edge::new(3u64, 5u64), Edge::new(5u64, 3u64),
+            // Bridge
+            Edge::new(2u64, 3u64), Edge::new(3u64, 2u64),
+        ];
+
+        let partition = CommunityPartition::from_edges(&edges, 6, 2);
+
+        // Should have 2 shards
+        assert_eq!(partition.num_shards(), 2);
+
+        // Nodes in same community should be on same shard
+        let shard_0 = partition.shard_for_node(NodeId::new(0));
+        let shard_1 = partition.shard_for_node(NodeId::new(1));
+        let shard_2 = partition.shard_for_node(NodeId::new(2));
+        assert_eq!(shard_0, shard_1);
+        assert_eq!(shard_1, shard_2);
+
+        let shard_3 = partition.shard_for_node(NodeId::new(3));
+        let shard_4 = partition.shard_for_node(NodeId::new(4));
+        let shard_5 = partition.shard_for_node(NodeId::new(5));
+        assert_eq!(shard_3, shard_4);
+        assert_eq!(shard_4, shard_5);
+
+        // Edge cut should be low (only the bridge edge)
+        let cut = partition.edge_cut_percentage(&edges);
+        assert!(cut < 20.0, "Edge cut too high: {}%", cut);
+    }
+
+    #[test]
+    fn test_community_partition_edge_cut() {
+        use neural_core::Edge;
+
+        // 4 dense cliques (complete subgraphs) with sparse bridges
+        // Cliques have clear community structure that Leiden can detect
+        let mut edges = Vec::new();
+
+        // Helper to create a complete clique
+        fn add_clique(edges: &mut Vec<Edge>, start: u64, size: u64) {
+            for i in start..(start + size) {
+                for j in (i + 1)..(start + size) {
+                    edges.push(Edge::new(i, j));
+                    edges.push(Edge::new(j, i)); // bidirectional
+                }
+            }
+        }
+
+        // 4 cliques of 5 nodes each (nodes 0-4, 5-9, 10-14, 15-19)
+        add_clique(&mut edges, 0, 5);   // Community 0
+        add_clique(&mut edges, 5, 5);   // Community 1
+        add_clique(&mut edges, 10, 5);  // Community 2
+        add_clique(&mut edges, 15, 5);  // Community 3
+
+        // Sparse bridges (1 edge between each adjacent community)
+        edges.push(Edge::new(4u64, 5u64));  // Community 0 -> 1
+        edges.push(Edge::new(9u64, 10u64)); // Community 1 -> 2
+        edges.push(Edge::new(14u64, 15u64)); // Community 2 -> 3
+
+        let partition = CommunityPartition::from_edges(&edges, 20, 4);
+        let cut = partition.edge_cut_percentage(&edges);
+
+        // With 4 well-separated cliques and 4 shards,
+        // edge cut should be low (3 bridge edges out of 43 total)
+        // Expected: 3/43 = ~7%
+        assert!(cut < 15.0, "Edge cut should be low with clear cliques: {}%", cut);
     }
 }
