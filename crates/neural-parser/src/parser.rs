@@ -218,6 +218,10 @@ fn parse_statement_internal(parser: &mut Parser<'_>) -> Result<Statement, ParseE
             let timestamp = parse_or_expression(parser)?;
             Ok(Statement::Flashback { timestamp })
         }
+        Some(Token::Call) => {
+            let call_clause = parse_call_clause(parser)?;
+            Ok(Statement::Call(call_clause))
+        }
         Some(Token::Create) => {
             let create_clause = parse_create_clause(parser)?;
             Ok(Statement::Create(create_clause))
@@ -292,7 +296,7 @@ fn parse_statement_internal(parser: &mut Parser<'_>) -> Result<Statement, ParseE
         }
         Some(token) => Err(ParseError::UnexpectedToken {
             position: 0,
-            expected: "MATCH, CREATE, DELETE, WITH, UNWIND, OPTIONAL, MERGE, EXPLAIN, PROFILE".to_string(),
+            expected: "MATCH, CREATE, DELETE, WITH, UNWIND, OPTIONAL, MERGE, EXPLAIN, PROFILE, CALL".to_string(),
             found: format!("{:?}", token),
         }),
         None => Err(ParseError::UnexpectedEof {
@@ -972,6 +976,44 @@ fn parse_return_item(parser: &mut Parser<'_>) -> Result<ReturnItem, ParseError> 
         Some(parser.parse_identifier()?)
     } else { None };
     Ok(ReturnItem { expression, alias })
+}
+
+// =============================================================================
+// CALL Clause (Sprint 56)
+// =============================================================================
+
+/// Parses a CALL clause for procedure invocation.
+///
+/// Syntax: CALL namespace.procedure(arg1, arg2, ...)
+/// Example: CALL neural.search($vec, 'cosine', 10)
+fn parse_call_clause(parser: &mut Parser<'_>) -> Result<CallClause, ParseError> {
+    parser.expect(&Token::Call)?;
+
+    // Parse namespace (e.g., "neural")
+    let namespace = parser.parse_identifier()?;
+
+    // Expect dot
+    parser.expect(&Token::Dot)?;
+
+    // Parse procedure name (e.g., "search")
+    let name = parser.parse_identifier()?;
+
+    // Expect opening paren
+    parser.expect(&Token::LParen)?;
+
+    // Parse arguments
+    let mut args = Vec::new();
+    if !matches!(parser.peek(), Some(Token::RParen)) {
+        args.push(parse_or_expression(parser)?);
+        while parser.match_token(&Token::Comma) {
+            args.push(parse_or_expression(parser)?);
+        }
+    }
+
+    // Expect closing paren
+    parser.expect(&Token::RParen)?;
+
+    Ok(CallClause { namespace, name, args })
 }
 
 // Mutation Clauses

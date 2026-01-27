@@ -2,11 +2,192 @@
 //!
 //! This module provides O(log n) vector similarity search using the
 //! Hierarchical Navigable Small World (HNSW) algorithm.
+//!
+//! ## Embedding Metadata (Sprint 56)
+//!
+//! Each embedding can have associated metadata:
+//! - Model origin (e.g., "openai/text-embedding-3-small")
+//! - Distance metric (Cosine, Euclidean, DotProduct)
+//! - Creation timestamp
 
 use hnsw_rs::anndists::dist::DistCosine;
 use hnsw_rs::hnsw::Hnsw;
 use neural_core::NodeId;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+// =============================================================================
+// Distance Metrics (Sprint 56)
+// =============================================================================
+
+/// Distance metric for vector similarity computation.
+///
+/// Different embedding models are optimized for different metrics:
+/// - OpenAI embeddings: Cosine
+/// - Some sentence transformers: Euclidean
+/// - Matryoshka embeddings: DotProduct
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum DistanceMetric {
+    /// Cosine similarity (default). Range: -1.0 to 1.0
+    /// Best for normalized embeddings from most LLM providers.
+    #[default]
+    Cosine,
+    /// Euclidean (L2) distance. Range: 0.0 to infinity
+    /// Good for embeddings where magnitude matters.
+    Euclidean,
+    /// Dot product similarity. Range: -infinity to infinity
+    /// Fastest computation, good for pre-normalized vectors.
+    DotProduct,
+}
+
+impl DistanceMetric {
+    /// Computes similarity between two vectors using this metric.
+    ///
+    /// For Cosine and DotProduct, higher is more similar.
+    /// For Euclidean, lower distance means more similar (returns negative distance).
+    pub fn similarity(&self, a: &[f32], b: &[f32]) -> f32 {
+        match self {
+            DistanceMetric::Cosine => cosine_similarity(a, b),
+            DistanceMetric::Euclidean => -euclidean_distance(a, b), // Negate so higher = more similar
+            DistanceMetric::DotProduct => dot_product(a, b),
+        }
+    }
+
+    /// Computes distance between two vectors using this metric.
+    ///
+    /// Lower distance means more similar for all metrics.
+    pub fn distance(&self, a: &[f32], b: &[f32]) -> f32 {
+        match self {
+            DistanceMetric::Cosine => cosine_distance(a, b),
+            DistanceMetric::Euclidean => euclidean_distance(a, b),
+            DistanceMetric::DotProduct => -dot_product(a, b), // Negate so lower = more similar
+        }
+    }
+}
+
+impl std::fmt::Display for DistanceMetric {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DistanceMetric::Cosine => write!(f, "cosine"),
+            DistanceMetric::Euclidean => write!(f, "euclidean"),
+            DistanceMetric::DotProduct => write!(f, "dot_product"),
+        }
+    }
+}
+
+// =============================================================================
+// Embedding Metadata (Sprint 56)
+// =============================================================================
+
+/// Metadata associated with an embedding vector.
+///
+/// Tracks the origin model, distance metric, and creation time.
+///
+/// # Example
+///
+/// ```
+/// use neural_storage::vector_index::{EmbeddingMetadata, DistanceMetric};
+///
+/// let metadata = EmbeddingMetadata::new("openai/text-embedding-3-small")
+///     .with_metric(DistanceMetric::Cosine);
+///
+/// assert_eq!(metadata.model(), "openai/text-embedding-3-small");
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EmbeddingMetadata {
+    /// The model used to generate this embedding (e.g., "openai/text-embedding-3-small")
+    model: String,
+    /// The distance metric this embedding is optimized for
+    metric: DistanceMetric,
+    /// Creation timestamp (ISO 8601)
+    created_at: String,
+    /// Optional dimension of the embedding
+    dimension: Option<usize>,
+    /// Optional additional properties
+    properties: HashMap<String, String>,
+}
+
+impl EmbeddingMetadata {
+    /// Creates new metadata with the given model name.
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            model: model.into(),
+            metric: DistanceMetric::default(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            dimension: None,
+            properties: HashMap::new(),
+        }
+    }
+
+    /// Sets the distance metric.
+    pub fn with_metric(mut self, metric: DistanceMetric) -> Self {
+        self.metric = metric;
+        self
+    }
+
+    /// Sets the embedding dimension.
+    pub fn with_dimension(mut self, dim: usize) -> Self {
+        self.dimension = Some(dim);
+        self
+    }
+
+    /// Adds a custom property.
+    pub fn with_property(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.properties.insert(key.into(), value.into());
+        self
+    }
+
+    /// Returns the model name.
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
+    /// Returns the distance metric.
+    pub fn metric(&self) -> DistanceMetric {
+        self.metric
+    }
+
+    /// Returns the creation timestamp.
+    pub fn created_at(&self) -> &str {
+        &self.created_at
+    }
+
+    /// Returns the dimension if set.
+    pub fn dimension(&self) -> Option<usize> {
+        self.dimension
+    }
+
+    /// Returns a custom property.
+    pub fn property(&self, key: &str) -> Option<&str> {
+        self.properties.get(key).map(|s| s.as_str())
+    }
+}
+
+impl Default for EmbeddingMetadata {
+    fn default() -> Self {
+        Self::new("unknown")
+    }
+}
+
+// =============================================================================
+// Distance Functions
+// =============================================================================
+
+/// Computes the dot product between two vectors.
+pub fn dot_product(a: &[f32], b: &[f32]) -> f32 {
+    assert_eq!(a.len(), b.len(), "Vector dimension mismatch");
+    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+}
+
+/// Computes the Euclidean (L2) distance between two vectors.
+pub fn euclidean_distance(a: &[f32], b: &[f32]) -> f32 {
+    assert_eq!(a.len(), b.len(), "Vector dimension mismatch");
+    a.iter()
+        .zip(b.iter())
+        .map(|(x, y)| (x - y).powi(2))
+        .sum::<f32>()
+        .sqrt()
+}
 
 // =============================================================================
 // Configuration
@@ -20,6 +201,8 @@ use std::collections::HashMap;
 /// - `m`: Max graph edges per node (16-48). Higher = better recall, more memory.
 /// - `ef_construction`: Build quality (100-500). Higher = better graph, slower build.
 /// - `max_elements`: Pre-allocated capacity for vectors.
+/// - `model`: Optional model name for metadata tracking (Sprint 56)
+/// - `metric`: Distance metric for similarity computation (Sprint 56)
 #[derive(Debug, Clone)]
 pub struct VectorIndexConfig {
     /// Vector dimensionality
@@ -30,6 +213,10 @@ pub struct VectorIndexConfig {
     pub ef_construction: usize,
     /// Initial capacity for the index
     pub max_elements: usize,
+    /// Model name for embeddings (e.g., "openai/text-embedding-3-small")
+    pub model: Option<String>,
+    /// Distance metric (default: Cosine)
+    pub metric: DistanceMetric,
 }
 
 impl VectorIndexConfig {
@@ -48,6 +235,8 @@ impl VectorIndexConfig {
             m: 16,
             ef_construction: 200,
             max_elements: 10_000,
+            model: None,
+            metric: DistanceMetric::Cosine,
         }
     }
 
@@ -58,7 +247,21 @@ impl VectorIndexConfig {
             m: 24,
             ef_construction: 400,
             max_elements: 1_000_000,
+            model: None,
+            metric: DistanceMetric::Cosine,
         }
+    }
+
+    /// Sets the model name for this index.
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
+    }
+
+    /// Sets the distance metric for this index.
+    pub fn with_metric(mut self, metric: DistanceMetric) -> Self {
+        self.metric = metric;
+        self
     }
 }
 
@@ -70,6 +273,8 @@ impl Default for VectorIndexConfig {
             m: 24,
             ef_construction: 400,
             max_elements: 1_000_000,
+            model: None,
+            metric: DistanceMetric::Cosine,
         }
     }
 }
@@ -131,6 +336,20 @@ pub fn cosine_distance(a: &[f32], b: &[f32]) -> f32 {
 /// let results = index.search(&[0.9, 0.1, 0.0], 1);
 /// assert_eq!(results[0].0, NodeId::new(0));  // Most similar
 /// ```
+///
+/// # With Metadata (Sprint 56)
+///
+/// ```ignore
+/// use neural_storage::{VectorIndex, VectorIndexConfig, DistanceMetric, EmbeddingMetadata};
+///
+/// let config = VectorIndexConfig::new(768)
+///     .with_model("openai/text-embedding-3-small")
+///     .with_metric(DistanceMetric::Cosine);
+///
+/// let mut index = VectorIndex::with_config(config);
+/// let metadata = EmbeddingMetadata::new("openai/text-embedding-3-small");
+/// index.add_with_metadata(NodeId::new(0), &embedding, metadata);
+/// ```
 pub struct VectorIndex {
     /// The HNSW index structure
     hnsw: Hnsw<'static, f32, DistCosine>,
@@ -142,6 +361,23 @@ pub struct VectorIndex {
     dimension: usize,
     /// Counter for internal IDs
     next_id: usize,
+    /// Index-level metadata (Sprint 56)
+    index_metadata: IndexMetadata,
+    /// Per-embedding metadata (Sprint 56)
+    embedding_metadata: HashMap<NodeId, EmbeddingMetadata>,
+}
+
+/// Index-level metadata (Sprint 56)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexMetadata {
+    /// Model used for embeddings in this index
+    pub model: Option<String>,
+    /// Distance metric used for similarity
+    pub metric: DistanceMetric,
+    /// When this index was created
+    pub created_at: String,
+    /// Number of embeddings in this index
+    pub embedding_count: usize,
 }
 
 impl VectorIndex {
@@ -180,6 +416,8 @@ impl VectorIndex {
     ///     m: 32,
     ///     ef_construction: 500,
     ///     max_elements: 500_000,
+    ///     model: None,
+    ///     metric: DistanceMetric::Cosine,
     /// };
     /// let custom_index = VectorIndex::with_config(custom);
     /// ```
@@ -196,6 +434,13 @@ impl VectorIndex {
             node_to_id: HashMap::new(),
             dimension: config.dimension,
             next_id: 0,
+            index_metadata: IndexMetadata {
+                model: config.model,
+                metric: config.metric,
+                created_at: chrono::Utc::now().to_rfc3339(),
+                embedding_count: 0,
+            },
+            embedding_metadata: HashMap::new(),
         }
     }
 
@@ -227,6 +472,47 @@ impl VectorIndex {
 
         // Insert into HNSW
         self.hnsw.insert((vector, internal_id));
+        self.index_metadata.embedding_count += 1;
+    }
+
+    /// Adds a vector with metadata to the index (Sprint 56).
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - The NodeId to associate with this vector
+    /// * `vector` - The vector data (must match the dimension)
+    /// * `metadata` - Metadata for this embedding (model, metric, etc.)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let metadata = EmbeddingMetadata::new("openai/text-embedding-3-small")
+    ///     .with_metric(DistanceMetric::Cosine);
+    /// index.add_with_metadata(NodeId::new(0), &embedding, metadata);
+    /// ```
+    pub fn add_with_metadata(&mut self, node: NodeId, vector: &[f32], metadata: EmbeddingMetadata) {
+        self.add(node, vector);
+        self.embedding_metadata.insert(node, metadata);
+    }
+
+    /// Returns the metadata for a specific embedding (Sprint 56).
+    pub fn get_embedding_metadata(&self, node: NodeId) -> Option<&EmbeddingMetadata> {
+        self.embedding_metadata.get(&node)
+    }
+
+    /// Returns the index-level metadata (Sprint 56).
+    pub fn index_metadata(&self) -> &IndexMetadata {
+        &self.index_metadata
+    }
+
+    /// Returns the model name for this index (Sprint 56).
+    pub fn model(&self) -> Option<&str> {
+        self.index_metadata.model.as_deref()
+    }
+
+    /// Returns the distance metric for this index (Sprint 56).
+    pub fn metric(&self) -> DistanceMetric {
+        self.index_metadata.metric
     }
 
     /// Searches for the k nearest neighbors to the query vector.
@@ -318,6 +604,8 @@ impl std::fmt::Debug for VectorIndex {
         f.debug_struct("VectorIndex")
             .field("dimension", &self.dimension)
             .field("vector_count", &self.id_to_node.len())
+            .field("model", &self.index_metadata.model)
+            .field("metric", &self.index_metadata.metric)
             .finish_non_exhaustive()
     }
 }
@@ -440,5 +728,117 @@ mod tests {
         let b2 = [0.0, 1.0, 0.0];
         let dist2 = super::cosine_distance(&a, &b2);
         assert!((dist2 - 1.0).abs() < 1e-6, "Expected 1.0, got {}", dist2);
+    }
+
+    // =========================================================================
+    // Sprint 56: Embedding Metadata Tests
+    // =========================================================================
+
+    #[test]
+    fn test_dot_product() {
+        let a = [1.0, 2.0, 3.0];
+        let b = [4.0, 5.0, 6.0];
+        let result = super::dot_product(&a, &b);
+        // 1*4 + 2*5 + 3*6 = 4 + 10 + 18 = 32
+        assert!((result - 32.0).abs() < 1e-6, "Expected 32.0, got {}", result);
+    }
+
+    #[test]
+    fn test_euclidean_distance() {
+        let a = [0.0, 0.0, 0.0];
+        let b = [3.0, 4.0, 0.0];
+        let result = super::euclidean_distance(&a, &b);
+        // sqrt(3^2 + 4^2) = 5
+        assert!((result - 5.0).abs() < 1e-6, "Expected 5.0, got {}", result);
+    }
+
+    #[test]
+    fn test_distance_metric_similarity() {
+        let a = [1.0, 0.0];
+        let b = [1.0, 0.0];
+
+        // Cosine: identical vectors = similarity 1.0
+        let cosine_sim = DistanceMetric::Cosine.similarity(&a, &b);
+        assert!((cosine_sim - 1.0).abs() < 1e-6);
+
+        // Euclidean: identical vectors = distance 0, similarity 0 (negated)
+        let euclidean_sim = DistanceMetric::Euclidean.similarity(&a, &b);
+        assert!(euclidean_sim.abs() < 1e-6);
+
+        // DotProduct: [1,0] · [1,0] = 1
+        let dot_sim = DistanceMetric::DotProduct.similarity(&a, &b);
+        assert!((dot_sim - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_distance_metric_distance() {
+        let a = [1.0, 0.0];
+        let b = [0.0, 1.0]; // Orthogonal
+
+        // Cosine distance for orthogonal vectors = 1.0
+        let cosine_dist = DistanceMetric::Cosine.distance(&a, &b);
+        assert!((cosine_dist - 1.0).abs() < 1e-6);
+
+        // Euclidean distance = sqrt(2)
+        let euclidean_dist = DistanceMetric::Euclidean.distance(&a, &b);
+        assert!((euclidean_dist - 1.414213).abs() < 1e-3);
+    }
+
+    #[test]
+    fn test_embedding_metadata_builder() {
+        let metadata = EmbeddingMetadata::new("openai/text-embedding-3-small")
+            .with_metric(DistanceMetric::Cosine)
+            .with_dimension(1536)
+            .with_property("version", "v3");
+
+        assert_eq!(metadata.model(), "openai/text-embedding-3-small");
+        assert_eq!(metadata.metric(), DistanceMetric::Cosine);
+        assert_eq!(metadata.dimension(), Some(1536));
+        assert_eq!(metadata.property("version"), Some("v3"));
+        assert!(!metadata.created_at().is_empty());
+    }
+
+    #[test]
+    fn test_vector_index_config_with_metadata() {
+        let config = VectorIndexConfig::new(768)
+            .with_model("sentence-transformers/all-MiniLM-L6-v2")
+            .with_metric(DistanceMetric::Euclidean);
+
+        assert_eq!(config.model, Some("sentence-transformers/all-MiniLM-L6-v2".to_string()));
+        assert_eq!(config.metric, DistanceMetric::Euclidean);
+    }
+
+    #[test]
+    fn test_vector_index_with_metadata() {
+        let config = VectorIndexConfig::new(3)
+            .with_model("test-model")
+            .with_metric(DistanceMetric::Cosine);
+
+        let mut index = VectorIndex::with_config(config);
+
+        // Add with metadata
+        let metadata = EmbeddingMetadata::new("test-model")
+            .with_metric(DistanceMetric::Cosine);
+        index.add_with_metadata(NodeId::new(0), &[1.0, 0.0, 0.0], metadata);
+
+        // Verify index-level metadata
+        assert_eq!(index.model(), Some("test-model"));
+        assert_eq!(index.metric(), DistanceMetric::Cosine);
+        assert_eq!(index.index_metadata().embedding_count, 1);
+
+        // Verify per-embedding metadata
+        let emb_meta = index.get_embedding_metadata(NodeId::new(0)).unwrap();
+        assert_eq!(emb_meta.model(), "test-model");
+        assert_eq!(emb_meta.metric(), DistanceMetric::Cosine);
+
+        // Verify no metadata for node without metadata
+        assert!(index.get_embedding_metadata(NodeId::new(999)).is_none());
+    }
+
+    #[test]
+    fn test_distance_metric_display() {
+        assert_eq!(format!("{}", DistanceMetric::Cosine), "cosine");
+        assert_eq!(format!("{}", DistanceMetric::Euclidean), "euclidean");
+        assert_eq!(format!("{}", DistanceMetric::DotProduct), "dot_product");
     }
 }

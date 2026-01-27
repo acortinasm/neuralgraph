@@ -128,6 +128,13 @@ pub fn evaluate_at(
             ))
         }
 
+        Expression::VectorSearch { .. } => {
+            // VectorSearch is handled at the statement level via CALL neural.search()
+            Err(ExecutionError::ExecutionError(
+                "neural.search() must be called via CALL statement".into(),
+            ))
+        }
+
         Expression::Cluster { variable } => {
             let val = bindings
                 .get(variable)

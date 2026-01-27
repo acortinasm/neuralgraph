@@ -1091,6 +1091,9 @@ fn execute_statement_cli(input: &str, state: &mut ReplState) {
                     println!("{} Flashback to {} (tx_id: {})", "✓".green(), timestamp, tx_id);
                     println!("  Database state now visible as of that timestamp");
                 }
+                neural_executor::StatementResult::Call { procedure, result } => {
+                    println!("{} {} → {}", "✓".green(), procedure, result);
+                }
             }
         }
         Err(e) => {

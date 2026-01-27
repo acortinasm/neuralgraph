@@ -274,6 +274,13 @@ pub enum Token<'a> {
     Shard,
 
     // =========================================================================
+    // Procedure Call Keywords (Sprint 56)
+    // =========================================================================
+    /// CALL keyword - invoke procedures
+    #[token("CALL", ignore(ascii_case))]
+    Call,
+
+    // =========================================================================
     // Mutation Keywords (Sprint 21+)
     // =========================================================================
     /// CREATE keyword - create nodes/edges
@@ -460,6 +467,7 @@ impl<'a> Token<'a> {
                 | Token::To
                 | Token::Using
                 | Token::Shard
+                | Token::Call
         )
     }
 

@@ -520,6 +520,18 @@ async fn handle_query(
                 execution_time_ms: elapsed_ms,
             })
         },
+        Ok(StatementResult::Call { procedure, result }) => {
+            Json(QueryResponse {
+                success: true,
+                result: Some(serde_json::json!({
+                    "type": "call",
+                    "procedure": procedure,
+                    "result": result,
+                })),
+                error: None,
+                execution_time_ms: elapsed_ms,
+            })
+        },
         Err(e) => Json(QueryResponse {
             success: false,
             result: None,

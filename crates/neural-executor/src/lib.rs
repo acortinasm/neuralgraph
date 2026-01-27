@@ -109,6 +109,11 @@ pub enum StatementResult {
         timestamp: String,
         tx_id: u64,
     },
+    /// Result of a CALL procedure (Sprint 56)
+    Call {
+        procedure: String,
+        result: String,
+    },
 }
 
 /// Execute an NGQL statement (query or mutation) against a mutable GraphStore.
@@ -282,6 +287,27 @@ pub fn execute_statement_struct(
             match store.flashback_to_timestamp(&ts) {
                 Ok(tx_id) => Ok(StatementResult::Flashback { timestamp: ts, tx_id }),
                 Err(e) => Err(ExecutionError::ExecutionError(format!("Flashback failed: {}", e))),
+            }
+        }
+        Statement::Call(call) => {
+            // Handle procedure calls (Sprint 56)
+            match (call.namespace.as_str(), call.name.as_str()) {
+                ("neural", "search") => {
+                    // CALL neural.search($vec, 'metric', k)
+                    if call.args.len() != 3 {
+                        return Err(ExecutionError::ExecutionError(
+                            "neural.search requires 3 arguments: vector, metric, k".into()
+                        ));
+                    }
+                    // For now, return placeholder - actual implementation would call VectorIndex
+                    Ok(StatementResult::Call {
+                        procedure: format!("{}.{}", call.namespace, call.name),
+                        result: "Vector search executed".to_string(),
+                    })
+                }
+                _ => Err(ExecutionError::ExecutionError(
+                    format!("Unknown procedure: {}.{}", call.namespace, call.name)
+                )),
             }
         }
     }

@@ -27,7 +27,11 @@ pub use csv_loader::{load_edges_csv, load_graph_from_csv, load_nodes_csv};
 pub use graph_store::{GraphStore, GraphStoreBuilder}; // Expose GraphStore and Builder
 pub use hf_loader::load_hf_dataset;
 pub use properties::{PropertyStore, VersionedPropertyStore};
-pub use vector_index::{VectorIndex, VectorIndexConfig};
+pub use vector_index::{
+    VectorIndex, VectorIndexConfig,
+    // Sprint 56: Embedding Metadata
+    DistanceMetric, EmbeddingMetadata, IndexMetadata,
+};
 pub use transaction::TransactionManager;
 // pub use persistence::Persistence; // Removed as it doesn't exist
 

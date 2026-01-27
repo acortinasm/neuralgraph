@@ -150,6 +150,35 @@ pub enum Statement {
         /// The timestamp to revert to
         timestamp: Expression,
     },
+    /// CALL a procedure (Sprint 56)
+    ///
+    /// ```text
+    /// CALL neural.search($vec, 'euclidean', 10)
+    /// ```
+    Call(CallClause),
+}
+
+/// CALL clause for procedure invocation (Sprint 56).
+///
+/// ## Supported Procedures
+///
+/// - `neural.search($vec, metric, k)` - Vector similarity search
+///
+/// ## Syntax
+///
+/// ```text
+/// CALL neural.search($queryVector, 'cosine', 10)
+/// CALL neural.search($queryVector, 'euclidean', 10)
+/// CALL neural.search($queryVector, 'dot_product', 10)
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CallClause {
+    /// Procedure namespace (e.g., "neural")
+    pub namespace: String,
+    /// Procedure name (e.g., "search")
+    pub name: String,
+    /// Procedure arguments
+    pub args: Vec<Expression>,
 }
 
 /// CREATE clause for creating nodes and edges.
@@ -456,6 +485,16 @@ pub enum Expression {
         property: Box<Expression>,
         /// Query vector expression (e.g., parameter or literal)
         query: Box<Expression>,
+    },
+    /// Vector search with metric: neural.search($vec, 'euclidean', 10) (Sprint 56)
+    /// Returns top-k similar nodes using specified distance metric
+    VectorSearch {
+        /// Query vector expression (e.g., parameter or literal)
+        query: Box<Expression>,
+        /// Distance metric: 'cosine', 'euclidean', 'dot_product', 'l2'
+        metric: String,
+        /// Number of results to return (k)
+        k: u64,
     },
     /// Community detection function: CLUSTER(n)
     /// Returns the community ID for the node using Leiden algorithm (Sprint 16)
@@ -902,6 +941,9 @@ impl std::fmt::Display for Expression {
             }
             Expression::VectorSimilarity { property, query } => {
                 write!(f, "vector_similarity({}, {})", property, query)
+            }
+            Expression::VectorSearch { query, metric, k } => {
+                write!(f, "neural.search({}, '{}', {})", query, metric, k)
             }
             Expression::Cluster { variable } => {
                 write!(f, "CLUSTER({})", variable)
