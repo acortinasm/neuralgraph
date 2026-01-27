@@ -14,6 +14,7 @@ pub mod persistence;
 pub mod pma;
 pub mod properties;
 pub mod raft;
+pub mod sharding;
 pub mod transaction;
 pub mod vector_index;
 pub mod wal;

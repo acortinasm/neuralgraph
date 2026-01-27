@@ -467,6 +467,9 @@ pub struct GraphStore {
     /// Timestamp index for time-travel queries (Sprint 54)
     #[serde(default)]
     timestamp_index: TimestampIndex,
+    /// Shard manager for distributed queries (Sprint 55)
+    #[serde(skip)]
+    shard_manager: Option<crate::sharding::ShardManager>,
 }
 
 fn default_tx_counter() -> TransactionId {
@@ -502,6 +505,7 @@ impl GraphStore {
             transaction_manager: TransactionManager::new(),
             current_tx_id: 1,
             timestamp_index: TimestampIndex::new(),
+            shard_manager: None,
         }
     }
 
@@ -524,6 +528,7 @@ impl GraphStore {
             transaction_manager: TransactionManager::new(),
             current_tx_id: 1,
             timestamp_index: TimestampIndex::new(),
+            shard_manager: None,
         }
     }
 
@@ -549,6 +554,7 @@ impl GraphStore {
             transaction_manager: TransactionManager::new(),
             current_tx_id: 1,
             timestamp_index: TimestampIndex::new(),
+            shard_manager: None,
         };
 
         // Attempt to open WAL for recovery
@@ -1477,6 +1483,61 @@ impl GraphStore {
     pub fn timestamp_index(&self) -> &TimestampIndex {
         &self.timestamp_index
     }
+
+    // =========================================================================
+    // Sharding (Sprint 55)
+    // =========================================================================
+
+    /// Enables sharding with the given shard manager.
+    pub fn enable_sharding(&mut self, manager: crate::sharding::ShardManager) {
+        self.shard_manager = Some(manager);
+    }
+
+    /// Returns the shard manager, if sharding is enabled.
+    pub fn shard_manager(&self) -> Option<&crate::sharding::ShardManager> {
+        self.shard_manager.as_ref()
+    }
+
+    /// Returns a mutable reference to the shard manager.
+    pub fn shard_manager_mut(&mut self) -> Option<&mut crate::sharding::ShardManager> {
+        self.shard_manager.as_mut()
+    }
+
+    /// Returns whether sharding is enabled.
+    pub fn is_sharded(&self) -> bool {
+        self.shard_manager.is_some()
+    }
+
+    /// Returns whether a node belongs to this shard (or true if not sharded).
+    pub fn is_local_node(&self, node_id: NodeId) -> bool {
+        match &self.shard_manager {
+            Some(manager) => manager.is_local_node(node_id),
+            None => true, // Not sharded = all nodes are local
+        }
+    }
+
+    /// Returns the shard ID for a node (or 0 if not sharded).
+    pub fn shard_for_node(&self, node_id: NodeId) -> crate::sharding::ShardId {
+        match &self.shard_manager {
+            Some(manager) => manager.shard_for_node(node_id),
+            None => 0,
+        }
+    }
+
+    /// Returns the number of shards (1 if not sharded).
+    pub fn num_shards(&self) -> u32 {
+        match &self.shard_manager {
+            Some(manager) => manager.num_shards(),
+            None => 1,
+        }
+    }
+
+    /// Creates a shard router for query planning.
+    pub fn shard_router(&self) -> Option<crate::sharding::ShardRouter<'_>> {
+        self.shard_manager
+            .as_ref()
+            .map(crate::sharding::ShardRouter::new)
+    }
 }
 
 // Delegate Graph trait to inner CsrMatrix
@@ -1713,6 +1774,7 @@ impl GraphStoreBuilder {
             transaction_manager: TransactionManager::new(),
             current_tx_id: initial_tx_id + 1, // Next tx is 2
             timestamp_index: TimestampIndex::new(),
+            shard_manager: None,
         }
     }
 }
