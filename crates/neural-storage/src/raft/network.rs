@@ -256,7 +256,7 @@ impl ClusterAwareClient {
             let mut client = self.get_client(leader_id, &leader_addr).await?;
 
             // Serialize the request
-            let req_data = bincode::serialize(request)
+            let _req_data = bincode::serialize(request)
                 .map_err(|e| ClientError::OperationFailed(e.to_string()))?;
 
             // Send via append_entries (piggyback on Raft protocol)

@@ -269,7 +269,7 @@ impl HealthMonitor {
         node_id: RaftNodeId,
         addr: &str,
     ) -> Result<NodeHealth, String> {
-        let start = Instant::now();
+        let _start = Instant::now();
         let result = Self::check_node_health(node_id, addr, self.config.timeout).await;
 
         match result {

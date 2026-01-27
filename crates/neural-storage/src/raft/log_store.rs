@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use openraft::{StorageError, StorageIOError};
-use openraft::{Entry, LogId, OptionalSend, Vote, StoredMembership, ErrorSubject, ErrorVerb};
+use openraft::{Entry, LogId, OptionalSend, Vote, ErrorSubject, ErrorVerb};
 use openraft::Membership;
 use tokio::sync::RwLock;
 use anyerror::AnyError;
