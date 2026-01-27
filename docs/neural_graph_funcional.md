@@ -1,8 +1,8 @@
 # **NeuralGraphDB: Documento de Especificación Funcional**
 
-Versión: 4.1
-Fecha: 2026-01-23
-Estado: Fase 7 (MVCC Snapshot Isolation) En Progreso - v0.9.2
+Versión: 4.2
+Fecha: 2026-01-27
+Estado: Fase 6 (Infraestructura Distribuida) En Progreso - v0.9.3
 
 ## **1\. Resumen Ejecutivo**
 
@@ -38,11 +38,14 @@ El sistema se divide en cuatro capas funcionales estrictas para garantizar el re
 * **Propiedades:** VersionedPropertyStore con MVCC para snapshot isolation.
 * **Persistencia:** Snapshots binarios (`bincode`) + Write-Ahead Log (WAL) para durabilidad.
 * **Transacciones:** ACID completo (BEGIN, COMMIT, ROLLBACK) con MVCC para lecturas no bloqueantes.
+* **Time-Travel:** Consultas históricas (`AT TIME`) y restauración (`FLASHBACK TO`).
+* **Sharding:** Particionamiento horizontal con estrategias Hash, Range y Community-aware.
 * **Índices Invertidos (v0.2):**
   * **LabelIndex:** O(1) lookup para `MATCH (n:Label)`
   * **PropertyIndex:** O(1) lookup para `WHERE n.prop = value`
-  * **EdgeTypeIndex:** O(1) lookup para `()-[:TYPE]->()`
-  * **VectorIndex:** HNSW para búsquedas de similitud (k-NN).
+  * **EdgeTypeIndex:** O(1) lookup para `()-[:TYPE]->()` con soporte de puertos.
+  * **VectorIndex:** HNSW con metadatos (modelo, métrica, timestamp).
+* **Multi-aristas:** Soporte para aristas paralelas con numeración de puertos `[:TYPE:PORT]`.
 
 ## **3\. Especificación del Lenguaje: NGQL (Neural Graph SQL)**
 
@@ -167,9 +170,13 @@ CONFIG { "extract\_strategy": "graph\_rag\_triplets" }
 | **Robust Expressions (CASE, String Funcs)** | ❌ | ❌ | ❌ | ✅ Completado (Fase 4) |
 | **Temporal Engine (Date, DateTime)** | ❌ | ❌ | ❌ | ✅ Completado (Fase 4) |
 | **Interfaz Arrow Flight (Zero-Copy)** | ❌ | ❌ | ❌ | ✅ Completado (Fase 5) |
-| **ACID Transactions (BEGIN/COMMIT/ROLLBACK)** | ❌ | ❌ | ❌ | ✅ Completado (Fase 7) |
-| **MVCC (Snapshot Isolation)** | ❌ | ❌ | ❌ | ✅ Completado (Fase 7) |
-| **Time-Travel (AT TIME)** | ❌ | ❌ | ❌ | Planificado (Fase 7) |
+| **ACID Transactions (BEGIN/COMMIT/ROLLBACK)** | ❌ | ❌ | ❌ | ✅ Completado (Fase 6) |
+| **MVCC (Snapshot Isolation)** | ❌ | ❌ | ❌ | ✅ Completado (Fase 6) |
+| **Raft Consensus (Replicación)** | ❌ | ❌ | ❌ | ✅ Completado (Fase 6) |
+| **Time-Travel (AT TIME, FLASHBACK)** | ❌ | ❌ | ❌ | ✅ Completado (Fase 6) |
+| **Graph Sharding (Particionamiento)** | ❌ | ❌ | ❌ | ✅ Completado (Fase 6) |
+| **Embedding Metadata (Modelo, Métrica)** | ❌ | ❌ | ❌ | ✅ Completado (Fase 6) |
+| **Port Numbering (Multi-aristas)** | ❌ | ❌ | ❌ | ✅ Completado (Fase 6) |
 
 ## **7. Estado Actual de Implementación (v0.9 Candidate)**
 
@@ -177,11 +184,11 @@ CONFIG { "extract\_strategy": "graph\_rag\_triplets" }
 
 | Componente | Crate | Estado |
 | :---- | :---- | :---- |
-| Tipos Core | `neural-core` | ✅ Completo |
-| Parser NGQL | `neural-parser` | ✅ Completo (Soporta Cypher Std, Pipelines, MERGE, Funciones) |
-| Almacenamiento | `neural-storage` | ✅ Completo (CSR + Dynamic + WAL + Indices + HNSW + Temporal + MVCC) |
-| Executor de Queries | `neural-executor` | ✅ Completo (Streaming + Pushdown + Complex Exprs + MVCC Snapshots) |
-| CLI Interactivo | `neural-cli` | ✅ Completo (REPL, Server, Demo, Params) |
+| Tipos Core | `neural-core` | ✅ Completo (Edge ports, NodeId, EdgeId) |
+| Parser NGQL | `neural-parser` | ✅ Completo (Cypher Std, Pipelines, MERGE, Funciones, Time-Travel, Shards, Ports, CALL) |
+| Almacenamiento | `neural-storage` | ✅ Completo (CSR + WAL + MVCC + HNSW + Sharding + Raft + Embedding Metadata) |
+| Executor de Queries | `neural-executor` | ✅ Completo (Streaming + Pushdown + MVCC + Time-Travel + Procedures) |
+| CLI Interactivo | `neural-cli` | ✅ Completo (REPL, Server, Demo, Params, Raft) |
 
 ### Rendimiento Verificado
 
@@ -206,3 +213,8 @@ CONFIG { "extract\_strategy": "graph\_rag\_triplets" }
 * **Streaming Execution:** Modelo de procesamiento fila a fila (lazy) que evita materializar resultados intermedios en memoria.
 * **MVCC (Multi-Version Concurrency Control):** Técnica que mantiene múltiples versiones de datos para permitir lecturas no bloqueantes y snapshot isolation.
 * **Snapshot Isolation:** Nivel de aislamiento donde cada transacción ve una instantánea consistente de la base de datos al momento de comenzar.
+* **Time-Travel:** Capacidad de consultar datos históricos mediante `AT TIME` o restaurar estados previos con `FLASHBACK TO`.
+* **Graph Sharding:** Particionamiento horizontal del grafo para escala distribuida (Hash, Range, Community-aware).
+* **Port Numbering:** Identificadores únicos para multi-aristas paralelas entre el mismo par de nodos `[:TYPE:PORT]`.
+* **Embedding Metadata:** Metadatos asociados a vectores: modelo de origen, métrica de distancia, timestamp de creación.
+* **Raft Consensus:** Algoritmo de consenso distribuido para replicación y tolerancia a fallos.

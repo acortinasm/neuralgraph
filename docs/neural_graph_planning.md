@@ -2,8 +2,8 @@
 
 Metodología: Agile / Scrum (Sprints de 2 semanas)
 Duración Total Estimada: 29 Meses (73 Sprints)
-Versión: 7.0
-Última Actualización: 2026-01-26
+Versión: 7.1
+Última Actualización: 2026-01-27
 
 **Criterio de Priorización:** Infraestructura → Performance → AI
 
@@ -71,21 +71,21 @@ Versión: 7.0
 
 ### **Épicas de Fase 6**
 
-#### **Épica 16: Distribución & Replicación**
+#### **Épica 16: Distribución & Replicación** 🔄 EN PROGRESO
 
 Alta disponibilidad mediante consenso distribuido.
 
-* **US-16.1:** Como DBA, quiero replicación de datos mediante algoritmo Raft para tolerancia a fallos.
-* **US-16.2:** Como Sistema, quiero discovery automático de nodos y routing de queries al líder.
-* **US-16.3:** Como Analista, quiero consultar datos históricos (`AT TIME`) mediante time-travel.
+* **US-16.1:** ✅ Como DBA, quiero replicación de datos mediante algoritmo Raft para tolerancia a fallos.
+* **US-16.2:** 📅 Como Sistema, quiero discovery automático de nodos y routing de queries al líder.
+* **US-16.3:** ✅ Como Analista, quiero consultar datos históricos (`AT TIME`) mediante time-travel.
 
-#### **Épica 17: Particionamiento Horizontal**
+#### **Épica 17: Particionamiento Horizontal** ✅ COMPLETADA
 
 Escalabilidad más allá de un solo nodo.
 
-* **US-17.1:** Como Sistema, quiero particionamiento de grafos (vertex-cut o edge-cut) para sharding horizontal.
-* **US-17.2:** Como Sistema, quiero metadatos completos en embeddings: modelo de origen, métrica de distancia, timestamp.
-* **US-17.3:** Como Sistema, quiero soporte para multi-aristas paralelas con numeración de puertos.
+* **US-17.1:** ✅ Como Sistema, quiero particionamiento de grafos (vertex-cut o edge-cut) para sharding horizontal.
+* **US-17.2:** ✅ Como Sistema, quiero metadatos completos en embeddings: modelo de origen, métrica de distancia, timestamp.
+* **US-17.3:** ✅ Como Sistema, quiero soporte para multi-aristas paralelas con numeración de puertos.
 
 #### **Épica 18: Transacciones ACID & MVCC** ✅ COMPLETADA
 * **US-18.1:** ✅ Como Usuario, quiero transacciones multi-query (`BEGIN`, `COMMIT`, `ROLLBACK`).
@@ -97,12 +97,12 @@ Escalabilidad más allá de un solo nodo.
 | :---- | :---- | :---- | :---- | :---- |
 | **Sprint 50** | Transaction Manager | ACID (Begin, Commit, Rollback). | ✅ | Infra |
 | **Sprint 51** | MVCC | Snapshot Isolation. | ✅ | Infra |
-| **Sprint 52** | **Distributed Raft** | Replicación Multi-nodo con consenso. | 📅 | Infra |
+| **Sprint 52** | **Distributed Raft** | Replicación Multi-nodo con consenso. | ✅ | Infra |
 | **Sprint 53** | **Cluster Management** | Node Discovery, Leader Routing, Health Checks. | 📅 | Infra |
-| **Sprint 54** | **Time-Travel Queries** | `AT TIME` para consultas históricas sobre MVCC. | 📅 | Infra |
-| **Sprint 55** | **Graph Sharding** | Particionamiento vertex-cut/edge-cut para escala horizontal. | 📅 | Infra |
-| **Sprint 56** | **Embedding Metadata** | Modelo origen, múltiples métricas (coseno, euclidiana, dot). | 📅 | Infra |
-| **Sprint 57** | **Port Numbering** | Identificadores únicos para multi-aristas paralelas. | 📅 | Infra |
+| **Sprint 54** | **Time-Travel Queries** | `AT TIME` para consultas históricas sobre MVCC. | ✅ | Infra |
+| **Sprint 55** | **Graph Sharding** | Particionamiento vertex-cut/edge-cut para escala horizontal. | ✅ | Infra |
+| **Sprint 56** | **Embedding Metadata** | Modelo origen, múltiples métricas (coseno, euclidiana, dot). | ✅ | Infra |
+| **Sprint 57** | **Port Numbering** | Identificadores únicos para multi-aristas paralelas. | ✅ | Infra |
 
 ---
 
