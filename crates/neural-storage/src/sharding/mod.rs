@@ -31,7 +31,12 @@
 mod strategy;
 mod manager;
 mod router;
+mod coordinator;
 
 pub use strategy::{PartitionStrategy, HashPartition, RangePartition, ShardId};
-pub use manager::{ShardManager, ShardConfig, ShardInfo};
+pub use manager::{ShardManager, ShardConfig, ShardInfo, StrategyType};
 pub use router::{ShardRouter, ShardedQuery, QueryPlan};
+pub use coordinator::{
+    ShardCoordinator, CoordinatorConfig, ExecutionStrategy,
+    ShardResult, AggregatedResult, merge,
+};

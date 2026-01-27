@@ -277,7 +277,8 @@ fn parse_statement_internal(parser: &mut Parser<'_>) -> Result<Statement, ParseE
                          let mut clauses = vec![first_clause];
                          parse_remaining_query_clauses(parser, &mut clauses)?;
                          let temporal = parse_optional_temporal_clause(parser)?;
-                         Ok(Statement::Query(Query { clauses, temporal }))
+                         let shard_hint = parse_optional_shard_hint(parser)?;
+                         Ok(Statement::Query(Query { clauses, temporal, shard_hint }))
                      }
                  }
             } else {
@@ -321,7 +322,8 @@ fn parse_query_internal(parser: &mut Parser<'_>) -> Result<Query, ParseError> {
     }
 
     let temporal = parse_optional_temporal_clause(parser)?;
-    Ok(Query { clauses, temporal })
+    let shard_hint = parse_optional_shard_hint(parser)?;
+    Ok(Query { clauses, temporal, shard_hint })
 }
 
 /// Helper to parse remaining clauses in a pipeline
@@ -389,6 +391,121 @@ fn parse_optional_temporal_clause(parser: &mut Parser<'_>) -> Result<Option<Temp
     let timestamp = parse_or_expression(parser)?;
 
     Ok(Some(TemporalClause { timestamp }))
+}
+
+/// Parse optional USING SHARD hint for explicit shard routing (Sprint 55).
+///
+/// Syntax:
+/// - USING SHARD 0           -- Single shard
+/// - USING SHARD [0, 1, 2]   -- Multiple shards
+fn parse_optional_shard_hint(parser: &mut Parser<'_>) -> Result<Option<ShardHint>, ParseError> {
+    if !matches!(parser.peek(), Some(Token::Using)) {
+        return Ok(None);
+    }
+
+    parser.next(); // consume USING
+
+    // Expect SHARD
+    match parser.peek() {
+        Some(Token::Shard) => {
+            parser.next(); // consume SHARD
+        }
+        Some(token) => {
+            return Err(ParseError::UnexpectedToken {
+                position: parser.pos,
+                expected: "SHARD".to_string(),
+                found: format!("{:?}", token),
+            });
+        }
+        None => {
+            return Err(ParseError::UnexpectedEof {
+                expected: "SHARD".to_string(),
+            });
+        }
+    }
+
+    // Parse shard ID(s) - either a single integer or a list [0, 1, 2]
+    let shards = if matches!(parser.peek(), Some(Token::LBracket)) {
+        // List of shards: [0, 1, 2]
+        parser.next(); // consume [
+        let mut shard_list = Vec::new();
+
+        // Parse first shard
+        match parser.peek() {
+            Some(Token::Integer(s)) => {
+                let id: u32 = s.parse().map_err(|_| ParseError::InvalidPattern(
+                    format!("Invalid shard ID: {}", s)
+                ))?;
+                shard_list.push(id);
+                parser.next();
+            }
+            Some(token) => {
+                return Err(ParseError::UnexpectedToken {
+                    position: parser.pos,
+                    expected: "shard ID (integer)".to_string(),
+                    found: format!("{:?}", token),
+                });
+            }
+            None => {
+                return Err(ParseError::UnexpectedEof {
+                    expected: "shard ID (integer)".to_string(),
+                });
+            }
+        }
+
+        // Parse remaining shards
+        while parser.match_token(&Token::Comma) {
+            match parser.peek() {
+                Some(Token::Integer(s)) => {
+                    let id: u32 = s.parse().map_err(|_| ParseError::InvalidPattern(
+                        format!("Invalid shard ID: {}", s)
+                    ))?;
+                    shard_list.push(id);
+                    parser.next();
+                }
+                Some(token) => {
+                    return Err(ParseError::UnexpectedToken {
+                        position: parser.pos,
+                        expected: "shard ID (integer)".to_string(),
+                        found: format!("{:?}", token),
+                    });
+                }
+                None => {
+                    return Err(ParseError::UnexpectedEof {
+                        expected: "shard ID (integer)".to_string(),
+                    });
+                }
+            }
+        }
+
+        parser.expect(&Token::RBracket)?; // consume ]
+        shard_list
+    } else {
+        // Single shard: 0
+        match parser.peek() {
+            Some(Token::Integer(s)) => {
+                let id: u32 = s.parse().map_err(|_| ParseError::InvalidPattern(
+                    format!("Invalid shard ID: {}", s)
+                ))?;
+                parser.next();
+                vec![id]
+            }
+            Some(token) => {
+                return Err(ParseError::UnexpectedToken {
+                    position: parser.pos,
+                    expected: "shard ID (integer) or list [...]".to_string(),
+                    found: format!("{:?}", token),
+                });
+            }
+            None => {
+                return Err(ParseError::UnexpectedEof {
+                    expected: "shard ID (integer) or list [...]".to_string(),
+                });
+            }
+        }
+    };
+
+    Ok(Some(ShardHint { shards }))
 }
 
 // =============================================================================

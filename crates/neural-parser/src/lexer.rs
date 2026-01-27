@@ -263,6 +263,17 @@ pub enum Token<'a> {
     To,
 
     // =========================================================================
+    // Sharding Keywords (Sprint 55)
+    // =========================================================================
+    /// USING keyword - for shard hints (USING SHARD 0)
+    #[token("USING", ignore(ascii_case))]
+    Using,
+
+    /// SHARD keyword - for shard hints
+    #[token("SHARD", ignore(ascii_case))]
+    Shard,
+
+    // =========================================================================
     // Mutation Keywords (Sprint 21+)
     // =========================================================================
     /// CREATE keyword - create nodes/edges
@@ -447,6 +458,8 @@ impl<'a> Token<'a> {
                 | Token::Timestamp
                 | Token::Flashback
                 | Token::To
+                | Token::Using
+                | Token::Shard
         )
     }
 
@@ -749,6 +762,35 @@ mod tests {
                 Token::Flashback,
                 Token::To,
                 Token::StringSingle("'2026-01-14T00:00:00Z'"),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_shard_hint_tokens() {
+        let tokens = tokenize("USING SHARD 0").unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Using,
+                Token::Shard,
+                Token::Integer("0"),
+            ]
+        );
+
+        let tokens = tokenize("USING SHARD [0, 1, 2]").unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Using,
+                Token::Shard,
+                Token::LBracket,
+                Token::Integer("0"),
+                Token::Comma,
+                Token::Integer("1"),
+                Token::Comma,
+                Token::Integer("2"),
+                Token::RBracket,
             ]
         );
     }

@@ -32,6 +32,8 @@ pub struct Query {
     pub clauses: Vec<Clause>,
     /// Optional temporal clause for time-travel queries (Sprint 54)
     pub temporal: Option<TemporalClause>,
+    /// Optional shard hint for explicit routing (Sprint 55)
+    pub shard_hint: Option<ShardHint>,
 }
 
 /// Temporal clause for time-travel queries (Sprint 54).
@@ -48,6 +50,22 @@ pub struct Query {
 pub struct TemporalClause {
     /// The timestamp expression (typically a string literal or parameter)
     pub timestamp: Expression,
+}
+
+/// Shard hint for routing queries to specific shards (Sprint 55).
+///
+/// Allows explicit shard targeting for optimized query routing.
+///
+/// ## Syntax
+///
+/// ```text
+/// USING SHARD 0               -- Single shard
+/// USING SHARD [0, 1, 2]       -- Multiple shards
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ShardHint {
+    /// The shard ID(s) to target
+    pub shards: Vec<u32>,
 }
 
 /// A clause in a query pipeline.
@@ -668,7 +686,27 @@ impl std::fmt::Display for Query {
         if let Some(ref temporal) = self.temporal {
             write!(f, " {}", temporal)?;
         }
+        if let Some(ref shard_hint) = self.shard_hint {
+            write!(f, " {}", shard_hint)?;
+        }
         Ok(())
+    }
+}
+
+impl std::fmt::Display for ShardHint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.shards.len() == 1 {
+            write!(f, "USING SHARD {}", self.shards[0])
+        } else {
+            write!(f, "USING SHARD [")?;
+            for (i, shard) in self.shards.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", shard)?;
+            }
+            write!(f, "]")
+        }
     }
 }
 
@@ -997,6 +1035,7 @@ mod tests {
                 }),
             ],
             temporal: None,
+            shard_hint: None,
         };
         assert_eq!(format!("{}", query), "MATCH (n:Person) RETURN n");
     }
@@ -1021,7 +1060,17 @@ mod tests {
                 }),
             ],
             temporal: Some(temporal),
+            shard_hint: None,
         };
         assert!(query.temporal.is_some());
+    }
+
+    #[test]
+    fn test_shard_hint() {
+        let hint = ShardHint { shards: vec![0] };
+        assert_eq!(format!("{}", hint), "USING SHARD 0");
+
+        let multi_hint = ShardHint { shards: vec![0, 1, 2] };
+        assert_eq!(format!("{}", multi_hint), "USING SHARD [0, 1, 2]");
     }
 }

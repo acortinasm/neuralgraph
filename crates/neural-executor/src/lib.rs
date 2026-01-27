@@ -719,6 +719,7 @@ fn execute_delete(
                 })
             ],
             temporal: None,
+            shard_hint: None,
         };
 
         let result = execute_query_ast(store, &query, params)?;
@@ -788,6 +789,7 @@ fn execute_set(
             })
         ],
         temporal: None,
+        shard_hint: None,
     };
 
     let result = execute_query_ast(store, &query, params)?;
@@ -866,6 +868,7 @@ fn execute_create_with_match(
             })
         ],
         temporal: None,
+        shard_hint: None,
     };
 
     // Use read-only query execution first
