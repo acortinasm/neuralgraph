@@ -13,6 +13,7 @@ neural-storage = { path = "../neural-storage" }
 neural-parser = { path = "../neural-parser" }
 thiserror.workspace = true
 serde.workspace = true
+serde_json.workspace = true  # For direct JSON serialization
+im.workspace = true  # Persistent data structures for zero-copy bindings
 
 [dev-dependencies]
-serde_json.workspace = true

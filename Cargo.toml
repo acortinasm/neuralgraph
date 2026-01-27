@@ -26,6 +26,7 @@ arrow = "54"
 arrow-flight = "54"
 tonic = "0.12"
 prost = "0.13"
+im = "15.1"  # Persistent data structures for zero-copy bindings
 
 # Internal crates
 neural-core = { path = "crates/neural-core" }

@@ -22,6 +22,7 @@ import csv
 import statistics
 import argparse
 import logging
+import subprocess
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional, Tuple
@@ -30,6 +31,13 @@ from abc import ABC, abstractmethod
 
 import requests
 from tqdm import tqdm
+
+# Memory tracking
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
 
 # Import query definitions
 import sys
@@ -79,20 +87,88 @@ log = logging.getLogger(__name__)
 CONFIG = {
     "neuralgraph": {
         "http_url": "http://localhost:3000/api/query",
+        "process_name": "neuralgraph",
     },
     "neo4j": {
         "uri": "bolt://localhost:7687",
         "auth": ("neo4j", "testpass123"),
+        "container_name": "neo4j_benchmark",
     },
     "falkordb": {
         "host": "localhost",
         "port": 16379,
         "graph": "ldbc_bench",
+        "container_name": "benchmark-falkordb",
     },
     "warmup_iterations": 3,
     "timed_iterations": 10,
     "executions": 3,  # Number of full benchmark executions
 }
+
+
+# =============================================================================
+# Memory Tracking Utilities
+# =============================================================================
+
+def get_process_memory_mb(process_name: str) -> Optional[float]:
+    """Get memory usage of a process by name in MB."""
+    if not HAS_PSUTIL:
+        return None
+    try:
+        for proc in psutil.process_iter(['name', 'memory_info']):
+            if process_name.lower() in proc.info['name'].lower():
+                return proc.info['memory_info'].rss / (1024 * 1024)
+    except Exception:
+        pass
+    return None
+
+
+def get_docker_memory_mb(container_name: str) -> Optional[float]:
+    """Get memory usage of a Docker container in MB."""
+    try:
+        result = subprocess.run(
+            ["docker", "stats", container_name, "--no-stream", "--format", "{{.MemUsage}}"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            # Parse output like "123.4MiB / 1.5GiB" or "1.2GiB / 2GiB"
+            mem_str = result.stdout.strip().split('/')[0].strip()
+            if 'GiB' in mem_str:
+                return float(mem_str.replace('GiB', '').strip()) * 1024
+            elif 'MiB' in mem_str:
+                return float(mem_str.replace('MiB', '').strip())
+            elif 'KiB' in mem_str:
+                return float(mem_str.replace('KiB', '').strip()) / 1024
+    except Exception:
+        pass
+    return None
+
+
+@dataclass
+class MemoryStats:
+    """Memory usage statistics."""
+    before_load_mb: Optional[float] = None
+    after_load_mb: Optional[float] = None
+    after_queries_mb: Optional[float] = None
+    peak_mb: Optional[float] = None
+
+    @property
+    def data_footprint_mb(self) -> Optional[float]:
+        """Memory used by loaded data."""
+        if self.before_load_mb is not None and self.after_load_mb is not None:
+            return self.after_load_mb - self.before_load_mb
+        return None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "before_load_mb": round(self.before_load_mb, 2) if self.before_load_mb else None,
+            "after_load_mb": round(self.after_load_mb, 2) if self.after_load_mb else None,
+            "after_queries_mb": round(self.after_queries_mb, 2) if self.after_queries_mb else None,
+            "peak_mb": round(self.peak_mb, 2) if self.peak_mb else None,
+            "data_footprint_mb": round(self.data_footprint_mb, 2) if self.data_footprint_mb else None,
+        }
 
 
 # =============================================================================
@@ -188,6 +264,7 @@ class ExecutionResult:
     ingestion_time_s: float = 0
     total_nodes: int = 0
     total_edges: int = 0
+    memory: MemoryStats = field(default_factory=MemoryStats)
 
 
 @dataclass
@@ -228,6 +305,7 @@ class BenchmarkReport:
                     "ingestion_time_s": e.ingestion_time_s,
                     "total_nodes": e.total_nodes,
                     "total_edges": e.total_edges,
+                    "memory": e.memory.to_dict(),
                     "queries": {qid: stats.to_dict() for qid, stats in e.queries.items()}
                 }
                 for e in self.executions
@@ -264,6 +342,11 @@ class DatabaseAdapter(ABC):
 
     @abstractmethod
     def close(self):
+        pass
+
+    @abstractmethod
+    def get_memory_mb(self) -> Optional[float]:
+        """Get current memory usage in MB."""
         pass
 
 
@@ -464,6 +547,10 @@ class NeuralGraphAdapter(DatabaseAdapter):
             elapsed = (time.perf_counter() - start) * 1000
             return elapsed, 0, False, str(e)
 
+    def get_memory_mb(self) -> Optional[float]:
+        """Get NeuralGraphDB process memory usage."""
+        return get_process_memory_mb(CONFIG["neuralgraph"]["process_name"])
+
     def close(self):
         pass
 
@@ -572,6 +659,10 @@ class Neo4jAdapter(DatabaseAdapter):
         except Exception as e:
             elapsed = (time.perf_counter() - start) * 1000
             return elapsed, 0, False, str(e)
+
+    def get_memory_mb(self) -> Optional[float]:
+        """Get Neo4j container memory usage."""
+        return get_docker_memory_mb(CONFIG["neo4j"]["container_name"])
 
     def close(self):
         if self.driver:
@@ -688,6 +779,10 @@ class FalkorDBAdapter(DatabaseAdapter):
         except Exception as e:
             elapsed = (time.perf_counter() - start) * 1000
             return elapsed, 0, False, str(e)
+
+    def get_memory_mb(self) -> Optional[float]:
+        """Get FalkorDB container memory usage."""
+        return get_docker_memory_mb(CONFIG["falkordb"]["container_name"])
 
     def close(self):
         pass
@@ -810,18 +905,40 @@ class LDBCBenchmark:
                 log.info("Clearing database...")
                 adapter.clear()
 
+                # Track memory before load
+                mem_before = adapter.get_memory_mb()
+                exec_result.memory.before_load_mb = mem_before
+
                 log.info("Loading data...")
                 ingestion_time, nodes, edges = adapter.load_data(self.data_dir)
                 exec_result.ingestion_time_s = ingestion_time
                 exec_result.total_nodes = nodes
                 exec_result.total_edges = edges
-                log.info(f"  Loaded {nodes:,} nodes, {edges:,} edges in {ingestion_time:.2f}s")
+
+                # Track memory after load
+                mem_after_load = adapter.get_memory_mb()
+                exec_result.memory.after_load_mb = mem_after_load
+                exec_result.memory.peak_mb = mem_after_load  # Initial peak
+
+                if mem_before and mem_after_load:
+                    data_footprint = mem_after_load - mem_before
+                    log.info(f"  Loaded {nodes:,} nodes, {edges:,} edges in {ingestion_time:.2f}s (Memory: {data_footprint:.1f}MB)")
+                else:
+                    log.info(f"  Loaded {nodes:,} nodes, {edges:,} edges in {ingestion_time:.2f}s")
 
                 # Run queries
                 log.info("Running LDBC queries...")
                 for query_id, query_def in LDBC_QUERIES.items():
                     stats = self._run_query(adapter, query_def)
                     exec_result.queries[query_id] = stats
+
+                    # Update peak memory
+                    current_mem = adapter.get_memory_mb()
+                    if current_mem and (exec_result.memory.peak_mb is None or current_mem > exec_result.memory.peak_mb):
+                        exec_result.memory.peak_mb = current_mem
+
+                # Track memory after queries
+                exec_result.memory.after_queries_mb = adapter.get_memory_mb()
 
                 report.executions.append(exec_result)
 
@@ -910,14 +1027,39 @@ class LDBCBenchmark:
 
             f.write("\n")
 
+            # Memory comparison table
+            f.write("## Memory Usage Summary\n\n")
+            f.write("| Database | Ingestion Time | Data Footprint | Peak Memory |\n")
+            f.write("|----------|----------------|----------------|-------------|\n")
+            for db_name, report in self.results.items():
+                if report.executions:
+                    avg_ingestion = statistics.mean([e.ingestion_time_s for e in report.executions])
+                    memory_footprints = [e.memory.data_footprint_mb for e in report.executions if e.memory.data_footprint_mb]
+                    peak_memories = [e.memory.peak_mb for e in report.executions if e.memory.peak_mb]
+
+                    footprint_str = f"{statistics.mean(memory_footprints):.1f} MB" if memory_footprints else "N/A"
+                    peak_str = f"{statistics.mean(peak_memories):.1f} MB" if peak_memories else "N/A"
+                    f.write(f"| {db_name} | {avg_ingestion:.2f}s | {footprint_str} | {peak_str} |\n")
+            f.write("\n")
+
             # Detailed stats per database
             for db_name, report in self.results.items():
                 f.write(f"\n## {db_name} Detailed Statistics\n\n")
 
-                # Ingestion stats
+                # Ingestion and memory stats
                 if report.executions:
                     avg_ingestion = statistics.mean([e.ingestion_time_s for e in report.executions])
                     f.write(f"**Average Ingestion Time:** {avg_ingestion:.2f}s\n\n")
+
+                    # Memory stats
+                    memory_footprints = [e.memory.data_footprint_mb for e in report.executions if e.memory.data_footprint_mb]
+                    peak_memories = [e.memory.peak_mb for e in report.executions if e.memory.peak_mb]
+                    if memory_footprints:
+                        avg_footprint = statistics.mean(memory_footprints)
+                        f.write(f"**Average Data Footprint:** {avg_footprint:.1f} MB\n\n")
+                    if peak_memories:
+                        avg_peak = statistics.mean(peak_memories)
+                        f.write(f"**Average Peak Memory:** {avg_peak:.1f} MB\n\n")
 
                 f.write("| Query | Mean | Median | Std | Min | Max | p50 | p95 | p99 |\n")
                 f.write("|-------|------|--------|-----|-----|-----|-----|-----|-----|\n")

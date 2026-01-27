@@ -847,6 +847,12 @@ impl<'a> Executor<'a> {
         Ok(Box::new(std::iter::once(Ok(binding))))
     }
 
+    /// Converts bindings to a QueryResult.
+    ///
+    /// ## Sprint 59 Optimization: Pre-allocation
+    ///
+    /// Uses `with_capacity()` to pre-allocate the exact number of rows needed,
+    /// avoiding reallocations during result building.
     pub fn bindings_to_result(&self, bindings: &[Bindings], columns: &[ProjectColumn], _params: Option<&eval::Parameters>) -> Result<QueryResult> {
         let column_names: Vec<String> = if columns.is_empty() {
             if let Some(first) = bindings.first() {
@@ -856,7 +862,8 @@ impl<'a> Executor<'a> {
             columns.iter().map(|c| c.output_name()).collect()
         };
 
-        let mut result = QueryResult::new(column_names.clone());
+        // Pre-allocate with exact capacity needed
+        let mut result = QueryResult::with_capacity(column_names.clone(), bindings.len());
         for binding in bindings {
             let mut row = Row::with_columns(column_names.clone());
             for col_name in &column_names {

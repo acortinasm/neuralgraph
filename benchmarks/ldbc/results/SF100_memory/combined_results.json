@@ -1,0 +1,670 @@
+{
+  "neuralgraph": {
+    "database": "neuralgraph",
+    "scale_factor": "SF100",
+    "timestamp": "2026-01-27T15:31:44.495014",
+    "num_executions": 1,
+    "aggregated": {
+      "IS1": {
+        "count": 10,
+        "mean_ms": 0.427,
+        "median_ms": 0.413,
+        "std_ms": 0.055,
+        "min_ms": 0.373,
+        "max_ms": 0.55,
+        "p50_ms": 0.413,
+        "p95_ms": 0.518,
+        "p99_ms": 0.543
+      },
+      "IS2": {
+        "count": 10,
+        "mean_ms": 0.431,
+        "median_ms": 0.418,
+        "std_ms": 0.04,
+        "min_ms": 0.38,
+        "max_ms": 0.506,
+        "p50_ms": 0.418,
+        "p95_ms": 0.487,
+        "p99_ms": 0.502
+      },
+      "IS3": {
+        "count": 10,
+        "mean_ms": 0.371,
+        "median_ms": 0.367,
+        "std_ms": 0.018,
+        "min_ms": 0.352,
+        "max_ms": 0.406,
+        "p50_ms": 0.367,
+        "p95_ms": 0.401,
+        "p99_ms": 0.405
+      },
+      "IS4": {
+        "count": 10,
+        "mean_ms": 0.425,
+        "median_ms": 0.424,
+        "std_ms": 0.061,
+        "min_ms": 0.353,
+        "max_ms": 0.499,
+        "p50_ms": 0.424,
+        "p95_ms": 0.498,
+        "p99_ms": 0.499
+      },
+      "IS5": {
+        "count": 10,
+        "mean_ms": 0.391,
+        "median_ms": 0.375,
+        "std_ms": 0.035,
+        "min_ms": 0.364,
+        "max_ms": 0.463,
+        "p50_ms": 0.375,
+        "p95_ms": 0.455,
+        "p99_ms": 0.461
+      },
+      "IS6": {
+        "count": 10,
+        "mean_ms": 0.426,
+        "median_ms": 0.399,
+        "std_ms": 0.069,
+        "min_ms": 0.37,
+        "max_ms": 0.601,
+        "p50_ms": 0.399,
+        "p95_ms": 0.542,
+        "p99_ms": 0.59
+      },
+      "IS7": {
+        "count": 10,
+        "mean_ms": 0.469,
+        "median_ms": 0.463,
+        "std_ms": 0.074,
+        "min_ms": 0.369,
+        "max_ms": 0.588,
+        "p50_ms": 0.463,
+        "p95_ms": 0.573,
+        "p99_ms": 0.585
+      },
+      "IC1": {
+        "count": 10,
+        "mean_ms": 0.408,
+        "median_ms": 0.393,
+        "std_ms": 0.038,
+        "min_ms": 0.376,
+        "max_ms": 0.497,
+        "p50_ms": 0.393,
+        "p95_ms": 0.471,
+        "p99_ms": 0.492
+      },
+      "IC2": {
+        "count": 10,
+        "mean_ms": 0.466,
+        "median_ms": 0.414,
+        "std_ms": 0.106,
+        "min_ms": 0.376,
+        "max_ms": 0.705,
+        "p50_ms": 0.414,
+        "p95_ms": 0.657,
+        "p99_ms": 0.695
+      },
+      "IC3": {
+        "count": 10,
+        "mean_ms": 0.389,
+        "median_ms": 0.386,
+        "std_ms": 0.022,
+        "min_ms": 0.365,
+        "max_ms": 0.436,
+        "p50_ms": 0.386,
+        "p95_ms": 0.424,
+        "p99_ms": 0.433
+      },
+      "IC4": {
+        "count": 10,
+        "mean_ms": 0.384,
+        "median_ms": 0.369,
+        "std_ms": 0.035,
+        "min_ms": 0.354,
+        "max_ms": 0.474,
+        "p50_ms": 0.369,
+        "p95_ms": 0.439,
+        "p99_ms": 0.467
+      },
+      "IC5": {
+        "count": 10,
+        "mean_ms": 0.354,
+        "median_ms": 0.344,
+        "std_ms": 0.014,
+        "min_ms": 0.342,
+        "max_ms": 0.377,
+        "p50_ms": 0.344,
+        "p95_ms": 0.377,
+        "p99_ms": 0.377
+      },
+      "IC6": {
+        "count": 10,
+        "mean_ms": 0.38,
+        "median_ms": 0.372,
+        "std_ms": 0.03,
+        "min_ms": 0.35,
+        "max_ms": 0.44,
+        "p50_ms": 0.372,
+        "p95_ms": 0.428,
+        "p99_ms": 0.438
+      },
+      "IC7": {
+        "count": 10,
+        "mean_ms": 0.394,
+        "median_ms": 0.376,
+        "std_ms": 0.052,
+        "min_ms": 0.351,
+        "max_ms": 0.529,
+        "p50_ms": 0.376,
+        "p95_ms": 0.479,
+        "p99_ms": 0.519
+      }
+    },
+    "executions": [
+      {
+        "execution_id": 1,
+        "timestamp": "2026-01-27T15:31:44.495054",
+        "ingestion_time_s": 39.60023120900223,
+        "total_nodes": 2126441,
+        "total_edges": 18619585,
+        "memory": {
+          "before_load_mb": 5.3,
+          "after_load_mb": 42.23,
+          "after_queries_mb": 42.3,
+          "peak_mb": 42.3,
+          "data_footprint_mb": 36.94
+        },
+        "queries": {
+          "IS1": {
+            "count": 10,
+            "mean_ms": 0.427,
+            "median_ms": 0.413,
+            "std_ms": 0.055,
+            "min_ms": 0.373,
+            "max_ms": 0.55,
+            "p50_ms": 0.413,
+            "p95_ms": 0.518,
+            "p99_ms": 0.543
+          },
+          "IS2": {
+            "count": 10,
+            "mean_ms": 0.431,
+            "median_ms": 0.418,
+            "std_ms": 0.04,
+            "min_ms": 0.38,
+            "max_ms": 0.506,
+            "p50_ms": 0.418,
+            "p95_ms": 0.487,
+            "p99_ms": 0.502
+          },
+          "IS3": {
+            "count": 10,
+            "mean_ms": 0.371,
+            "median_ms": 0.367,
+            "std_ms": 0.018,
+            "min_ms": 0.352,
+            "max_ms": 0.406,
+            "p50_ms": 0.367,
+            "p95_ms": 0.401,
+            "p99_ms": 0.405
+          },
+          "IS4": {
+            "count": 10,
+            "mean_ms": 0.425,
+            "median_ms": 0.424,
+            "std_ms": 0.061,
+            "min_ms": 0.353,
+            "max_ms": 0.499,
+            "p50_ms": 0.424,
+            "p95_ms": 0.498,
+            "p99_ms": 0.499
+          },
+          "IS5": {
+            "count": 10,
+            "mean_ms": 0.391,
+            "median_ms": 0.375,
+            "std_ms": 0.035,
+            "min_ms": 0.364,
+            "max_ms": 0.463,
+            "p50_ms": 0.375,
+            "p95_ms": 0.455,
+            "p99_ms": 0.461
+          },
+          "IS6": {
+            "count": 10,
+            "mean_ms": 0.426,
+            "median_ms": 0.399,
+            "std_ms": 0.069,
+            "min_ms": 0.37,
+            "max_ms": 0.601,
+            "p50_ms": 0.399,
+            "p95_ms": 0.542,
+            "p99_ms": 0.59
+          },
+          "IS7": {
+            "count": 10,
+            "mean_ms": 0.469,
+            "median_ms": 0.463,
+            "std_ms": 0.074,
+            "min_ms": 0.369,
+            "max_ms": 0.588,
+            "p50_ms": 0.463,
+            "p95_ms": 0.573,
+            "p99_ms": 0.585
+          },
+          "IC1": {
+            "count": 10,
+            "mean_ms": 0.408,
+            "median_ms": 0.393,
+            "std_ms": 0.038,
+            "min_ms": 0.376,
+            "max_ms": 0.497,
+            "p50_ms": 0.393,
+            "p95_ms": 0.471,
+            "p99_ms": 0.492
+          },
+          "IC2": {
+            "count": 10,
+            "mean_ms": 0.466,
+            "median_ms": 0.414,
+            "std_ms": 0.106,
+            "min_ms": 0.376,
+            "max_ms": 0.705,
+            "p50_ms": 0.414,
+            "p95_ms": 0.657,
+            "p99_ms": 0.695
+          },
+          "IC3": {
+            "count": 10,
+            "mean_ms": 0.389,
+            "median_ms": 0.386,
+            "std_ms": 0.022,
+            "min_ms": 0.365,
+            "max_ms": 0.436,
+            "p50_ms": 0.386,
+            "p95_ms": 0.424,
+            "p99_ms": 0.433
+          },
+          "IC4": {
+            "count": 10,
+            "mean_ms": 0.384,
+            "median_ms": 0.369,
+            "std_ms": 0.035,
+            "min_ms": 0.354,
+            "max_ms": 0.474,
+            "p50_ms": 0.369,
+            "p95_ms": 0.439,
+            "p99_ms": 0.467
+          },
+          "IC5": {
+            "count": 10,
+            "mean_ms": 0.354,
+            "median_ms": 0.344,
+            "std_ms": 0.014,
+            "min_ms": 0.342,
+            "max_ms": 0.377,
+            "p50_ms": 0.344,
+            "p95_ms": 0.377,
+            "p99_ms": 0.377
+          },
+          "IC6": {
+            "count": 10,
+            "mean_ms": 0.38,
+            "median_ms": 0.372,
+            "std_ms": 0.03,
+            "min_ms": 0.35,
+            "max_ms": 0.44,
+            "p50_ms": 0.372,
+            "p95_ms": 0.428,
+            "p99_ms": 0.438
+          },
+          "IC7": {
+            "count": 10,
+            "mean_ms": 0.394,
+            "median_ms": 0.376,
+            "std_ms": 0.052,
+            "min_ms": 0.351,
+            "max_ms": 0.529,
+            "p50_ms": 0.376,
+            "p95_ms": 0.479,
+            "p99_ms": 0.519
+          }
+        }
+      }
+    ]
+  },
+  "falkordb": {
+    "database": "falkordb",
+    "scale_factor": "SF100",
+    "timestamp": "2026-01-27T15:32:24.452678",
+    "num_executions": 1,
+    "aggregated": {
+      "IS1": {
+        "count": 10,
+        "mean_ms": 0.345,
+        "median_ms": 0.335,
+        "std_ms": 0.021,
+        "min_ms": 0.32,
+        "max_ms": 0.377,
+        "p50_ms": 0.335,
+        "p95_ms": 0.373,
+        "p99_ms": 0.376
+      },
+      "IS2": {
+        "count": 10,
+        "mean_ms": 0.315,
+        "median_ms": 0.316,
+        "std_ms": 0.023,
+        "min_ms": 0.282,
+        "max_ms": 0.366,
+        "p50_ms": 0.316,
+        "p95_ms": 0.35,
+        "p99_ms": 0.363
+      },
+      "IS3": {
+        "count": 10,
+        "mean_ms": 0.403,
+        "median_ms": 0.4,
+        "std_ms": 0.025,
+        "min_ms": 0.353,
+        "max_ms": 0.441,
+        "p50_ms": 0.4,
+        "p95_ms": 0.433,
+        "p99_ms": 0.44
+      },
+      "IS4": {
+        "count": 10,
+        "mean_ms": 0.256,
+        "median_ms": 0.253,
+        "std_ms": 0.015,
+        "min_ms": 0.236,
+        "max_ms": 0.279,
+        "p50_ms": 0.253,
+        "p95_ms": 0.278,
+        "p99_ms": 0.279
+      },
+      "IS5": {
+        "count": 10,
+        "mean_ms": 0.25,
+        "median_ms": 0.25,
+        "std_ms": 0.012,
+        "min_ms": 0.233,
+        "max_ms": 0.275,
+        "p50_ms": 0.25,
+        "p95_ms": 0.269,
+        "p99_ms": 0.274
+      },
+      "IS6": {
+        "count": 10,
+        "mean_ms": 0.232,
+        "median_ms": 0.228,
+        "std_ms": 0.016,
+        "min_ms": 0.218,
+        "max_ms": 0.271,
+        "p50_ms": 0.228,
+        "p95_ms": 0.258,
+        "p99_ms": 0.268
+      },
+      "IS7": {
+        "count": 10,
+        "mean_ms": 0.299,
+        "median_ms": 0.285,
+        "std_ms": 0.03,
+        "min_ms": 0.263,
+        "max_ms": 0.352,
+        "p50_ms": 0.285,
+        "p95_ms": 0.348,
+        "p99_ms": 0.351
+      },
+      "IC1": {
+        "count": 10,
+        "mean_ms": 0.527,
+        "median_ms": 0.526,
+        "std_ms": 0.088,
+        "min_ms": 0.418,
+        "max_ms": 0.641,
+        "p50_ms": 0.526,
+        "p95_ms": 0.638,
+        "p99_ms": 0.64
+      },
+      "IC2": {
+        "count": 10,
+        "mean_ms": 0.32,
+        "median_ms": 0.326,
+        "std_ms": 0.024,
+        "min_ms": 0.276,
+        "max_ms": 0.347,
+        "p50_ms": 0.326,
+        "p95_ms": 0.345,
+        "p99_ms": 0.347
+      },
+      "IC3": {
+        "count": 10,
+        "mean_ms": 0.493,
+        "median_ms": 0.488,
+        "std_ms": 0.049,
+        "min_ms": 0.427,
+        "max_ms": 0.565,
+        "p50_ms": 0.488,
+        "p95_ms": 0.558,
+        "p99_ms": 0.563
+      },
+      "IC4": {
+        "count": 10,
+        "mean_ms": 0.287,
+        "median_ms": 0.275,
+        "std_ms": 0.041,
+        "min_ms": 0.255,
+        "max_ms": 0.391,
+        "p50_ms": 0.275,
+        "p95_ms": 0.353,
+        "p99_ms": 0.384
+      },
+      "IC5": {
+        "count": 10,
+        "mean_ms": 0.563,
+        "median_ms": 0.521,
+        "std_ms": 0.138,
+        "min_ms": 0.44,
+        "max_ms": 0.929,
+        "p50_ms": 0.521,
+        "p95_ms": 0.783,
+        "p99_ms": 0.9
+      },
+      "IC6": {
+        "count": 10,
+        "mean_ms": 0.493,
+        "median_ms": 0.485,
+        "std_ms": 0.065,
+        "min_ms": 0.404,
+        "max_ms": 0.613,
+        "p50_ms": 0.485,
+        "p95_ms": 0.6,
+        "p99_ms": 0.611
+      },
+      "IC7": {
+        "count": 10,
+        "mean_ms": 0.333,
+        "median_ms": 0.334,
+        "std_ms": 0.028,
+        "min_ms": 0.288,
+        "max_ms": 0.375,
+        "p50_ms": 0.334,
+        "p95_ms": 0.368,
+        "p99_ms": 0.374
+      }
+    },
+    "executions": [
+      {
+        "execution_id": 1,
+        "timestamp": "2026-01-27T15:32:24.452708",
+        "ingestion_time_s": 748.8805571250014,
+        "total_nodes": 1000000,
+        "total_edges": 17493644,
+        "memory": {
+          "before_load_mb": null,
+          "after_load_mb": null,
+          "after_queries_mb": null,
+          "peak_mb": null,
+          "data_footprint_mb": null
+        },
+        "queries": {
+          "IS1": {
+            "count": 10,
+            "mean_ms": 0.345,
+            "median_ms": 0.335,
+            "std_ms": 0.021,
+            "min_ms": 0.32,
+            "max_ms": 0.377,
+            "p50_ms": 0.335,
+            "p95_ms": 0.373,
+            "p99_ms": 0.376
+          },
+          "IS2": {
+            "count": 10,
+            "mean_ms": 0.315,
+            "median_ms": 0.316,
+            "std_ms": 0.023,
+            "min_ms": 0.282,
+            "max_ms": 0.366,
+            "p50_ms": 0.316,
+            "p95_ms": 0.35,
+            "p99_ms": 0.363
+          },
+          "IS3": {
+            "count": 10,
+            "mean_ms": 0.403,
+            "median_ms": 0.4,
+            "std_ms": 0.025,
+            "min_ms": 0.353,
+            "max_ms": 0.441,
+            "p50_ms": 0.4,
+            "p95_ms": 0.433,
+            "p99_ms": 0.44
+          },
+          "IS4": {
+            "count": 10,
+            "mean_ms": 0.256,
+            "median_ms": 0.253,
+            "std_ms": 0.015,
+            "min_ms": 0.236,
+            "max_ms": 0.279,
+            "p50_ms": 0.253,
+            "p95_ms": 0.278,
+            "p99_ms": 0.279
+          },
+          "IS5": {
+            "count": 10,
+            "mean_ms": 0.25,
+            "median_ms": 0.25,
+            "std_ms": 0.012,
+            "min_ms": 0.233,
+            "max_ms": 0.275,
+            "p50_ms": 0.25,
+            "p95_ms": 0.269,
+            "p99_ms": 0.274
+          },
+          "IS6": {
+            "count": 10,
+            "mean_ms": 0.232,
+            "median_ms": 0.228,
+            "std_ms": 0.016,
+            "min_ms": 0.218,
+            "max_ms": 0.271,
+            "p50_ms": 0.228,
+            "p95_ms": 0.258,
+            "p99_ms": 0.268
+          },
+          "IS7": {
+            "count": 10,
+            "mean_ms": 0.299,
+            "median_ms": 0.285,
+            "std_ms": 0.03,
+            "min_ms": 0.263,
+            "max_ms": 0.352,
+            "p50_ms": 0.285,
+            "p95_ms": 0.348,
+            "p99_ms": 0.351
+          },
+          "IC1": {
+            "count": 10,
+            "mean_ms": 0.527,
+            "median_ms": 0.526,
+            "std_ms": 0.088,
+            "min_ms": 0.418,
+            "max_ms": 0.641,
+            "p50_ms": 0.526,
+            "p95_ms": 0.638,
+            "p99_ms": 0.64
+          },
+          "IC2": {
+            "count": 10,
+            "mean_ms": 0.32,
+            "median_ms": 0.326,
+            "std_ms": 0.024,
+            "min_ms": 0.276,
+            "max_ms": 0.347,
+            "p50_ms": 0.326,
+            "p95_ms": 0.345,
+            "p99_ms": 0.347
+          },
+          "IC3": {
+            "count": 10,
+            "mean_ms": 0.493,
+            "median_ms": 0.488,
+            "std_ms": 0.049,
+            "min_ms": 0.427,
+            "max_ms": 0.565,
+            "p50_ms": 0.488,
+            "p95_ms": 0.558,
+            "p99_ms": 0.563
+          },
+          "IC4": {
+            "count": 10,
+            "mean_ms": 0.287,
+            "median_ms": 0.275,
+            "std_ms": 0.041,
+            "min_ms": 0.255,
+            "max_ms": 0.391,
+            "p50_ms": 0.275,
+            "p95_ms": 0.353,
+            "p99_ms": 0.384
+          },
+          "IC5": {
+            "count": 10,
+            "mean_ms": 0.563,
+            "median_ms": 0.521,
+            "std_ms": 0.138,
+            "min_ms": 0.44,
+            "max_ms": 0.929,
+            "p50_ms": 0.521,
+            "p95_ms": 0.783,
+            "p99_ms": 0.9
+          },
+          "IC6": {
+            "count": 10,
+            "mean_ms": 0.493,
+            "median_ms": 0.485,
+            "std_ms": 0.065,
+            "min_ms": 0.404,
+            "max_ms": 0.613,
+            "p50_ms": 0.485,
+            "p95_ms": 0.6,
+            "p99_ms": 0.611
+          },
+          "IC7": {
+            "count": 10,
+            "mean_ms": 0.333,
+            "median_ms": 0.334,
+            "std_ms": 0.028,
+            "min_ms": 0.288,
+            "max_ms": 0.375,
+            "p50_ms": 0.334,
+            "p95_ms": 0.368,
+            "p99_ms": 0.374
+          }
+        }
+      }
+    ]
+  }
+}

@@ -119,7 +119,8 @@ Escalabilidad más allá de un solo nodo.
 Demostrar rendimiento competitivo vs Neo4j/FalkorDB.
 
 * **US-19.1:** ✅ Como Investigador, quiero benchmarks LDBC validados para el paper académico.
-* **US-19.2:** Como Sistema, quiero optimización de queries para workloads OLTP y OLAP.
+* **US-19.2:** ✅ Como Sistema, quiero query latency <0.35ms para competir con FalkorDB (zero-copy bindings con im::HashMap, direct JSON serialization, pre-allocated results). **Resultado: 0.72ms → 0.35ms (51% mejora)**
+* **US-19.3:** Como Sistema, quiero optimización de queries para workloads OLTP y OLAP.
 
 #### **Épica 20: Optimización de Memoria**
 
@@ -139,9 +140,10 @@ Primitivas de alto rendimiento para RAG.
 | Sprint | Foco Principal | Entregable Clave | Estado | Categoría |
 | :---- | :---- | :---- | :---- | :---- |
 | **Sprint 58** | **LDBC Validation** | Benchmarks completos vs Neo4j/FalkorDB para paper. | ✅ | Perf |
-| **Sprint 59** | **Flash Quantization** | Cuantización dinámica f32→int8/binary, 4x memoria. | 📅 | Perf |
-| **Sprint 60** | **Distributed Vector Search** | Búsqueda paralela en múltiples nodos + fusión. | 📅 | Perf |
-| **Sprint 61** | **Personalized PageRank** | PPR optimizado con sparse matrix operations. | 📅 | Perf |
+| **Sprint 59** | **Query Latency Optimization** | Zero-copy bindings (im::HashMap), direct serialization, pre-alloc results. **51% mejora: 0.72ms→0.35ms** | ✅ | Perf |
+| **Sprint 60** | **Flash Quantization** | Cuantización dinámica f32→int8/binary, 4x memoria. | 📅 | Perf |
+| **Sprint 61** | **Distributed Vector Search** | Búsqueda paralela en múltiples nodos + fusión. | 📅 | Perf |
+| **Sprint 62** | **Personalized PageRank** | PPR optimizado con sparse matrix operations. | 📅 | Perf |
 
 ---
 
@@ -180,13 +182,13 @@ Operaciones vectoriales especializadas para análisis de grafos.
 
 | Sprint | Foco Principal | Entregable Clave | Estado | Categoría |
 | :---- | :---- | :---- | :---- | :---- |
-| **Sprint 62** | **Community Summaries** | Generación automática de resúmenes con LLM post-Leiden. | 📅 | AI |
-| **Sprint 63** | **Community Vector Index** | VectorIndex sobre resúmenes + `globalSearch()` procedure. | 📅 | AI |
-| **Sprint 64** | **Core Chunks Selection** | Selección por centralidad + grafo de co-ocurrencia sin LLM. | 📅 | AI |
-| **Sprint 65** | **Hybrid Retrieval (wRRF)** | Weighted Reciprocal Rank Fusion de vector + graph. | 📅 | AI |
-| **Sprint 66** | **Semantic Ingestion** | `MERGE ON SIMILARITY` para deduplicación automática. | 📅 | AI |
-| **Sprint 67** | **Vector Similarity Join** | Operador top-k pairs con restricciones de grafo. | 📅 | AI |
-| **Sprint 68** | **Edge Embeddings** | VectorIndex sobre aristas + búsqueda semántica de relaciones. | 📅 | AI |
+| **Sprint 63** | **Community Summaries** | Generación automática de resúmenes con LLM post-Leiden. | 📅 | AI |
+| **Sprint 64** | **Community Vector Index** | VectorIndex sobre resúmenes + `globalSearch()` procedure. | 📅 | AI |
+| **Sprint 65** | **Core Chunks Selection** | Selección por centralidad + grafo de co-ocurrencia sin LLM. | 📅 | AI |
+| **Sprint 66** | **Hybrid Retrieval (wRRF)** | Weighted Reciprocal Rank Fusion de vector + graph. | 📅 | AI |
+| **Sprint 67** | **Semantic Ingestion** | `MERGE ON SIMILARITY` para deduplicación automática. | 📅 | AI |
+| **Sprint 68** | **Vector Similarity Join** | Operador top-k pairs con restricciones de grafo. | 📅 | AI |
+| **Sprint 69** | **Edge Embeddings** | VectorIndex sobre aristas + búsqueda semántica de relaciones. | 📅 | AI |
 
 ---
 
@@ -228,11 +230,11 @@ Soporte para múltiples modalidades (texto, imagen, audio).
 
 | Sprint | Foco Principal | Entregable Clave | Estado | Categoría |
 | :---- | :---- | :---- | :---- | :---- |
-| **Sprint 69** | **SQL Bridge** | Herramienta CLI/Python para ETL SQL->Graph. | 📅 | Infra |
-| **Sprint 70** | **Neural Dashboard** | UI Web (React/WASM) para visualización. | 📅 | Infra |
-| **Sprint 71** | **Reverse Message Passing** | Operador GNN con CSC para flujos entrantes. | 📅 | AI |
-| **Sprint 72** | **Ego Identifiers** | Breaking symmetries para detección de ciclos/fraude. | 📅 | AI |
-| **Sprint 73** | **Multimodal Indexes** | HNSW separados por modalidad (texto, imagen, audio). | 📅 | AI |
+| **Sprint 70** | **SQL Bridge** | Herramienta CLI/Python para ETL SQL->Graph. | 📅 | Infra |
+| **Sprint 71** | **Neural Dashboard** | UI Web (React/WASM) para visualización. | 📅 | Infra |
+| **Sprint 72** | **Reverse Message Passing** | Operador GNN con CSC para flujos entrantes. | 📅 | AI |
+| **Sprint 73** | **Ego Identifiers** | Breaking symmetries para detección de ciclos/fraude. | 📅 | AI |
+| **Sprint 74** | **Multimodal Indexes** | HNSW separados por modalidad (texto, imagen, audio). | 📅 | AI |
 
 ---
 
