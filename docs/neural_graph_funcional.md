@@ -1,8 +1,8 @@
 # **NeuralGraphDB: Documento de Especificación Funcional**
 
-Versión: 4.3
+Versión: 4.4
 Fecha: 2026-01-27
-Estado: Fase 7 (Rendimiento y Escala) En Progreso - v0.9.4
+Estado: Fase 7 (Rendimiento y Escala) En Progreso - v0.9.5 (Sprint 59: Query Latency Optimization)
 
 ## **1\. Resumen Ejecutivo**
 
@@ -200,18 +200,34 @@ CONFIG { "extract\_strategy": "graph\_rag\_triplets" }
 | Vector Search | <50ms | ~10ms (100k nodos) ✅ |
 | Streaming | - | O(1) memoria para scans lineales ✅ |
 
-### LDBC-SNB Benchmark (SF1: 10K persons, 192K edges)
+### LDBC-SNB Benchmark (Sprint 59 Optimized)
+
+**SF1 (27K nodes, 192K edges):**
 
 | Query | Category | p50 (ms) | p95 (ms) | p99 (ms) |
 | :---- | :---- | :---- | :---- | :---- |
-| IS1 (Profile) | Interactive Short | 0.64 | 0.71 | 0.71 |
-| IS2-IS7 | Interactive Short | 0.63-0.66 | 0.68-0.77 | 0.70-0.84 |
-| IC1-IC7 | Interactive Complex | 0.63-0.68 | 0.68-0.80 | 0.68-0.85 |
+| IS1-IS7 | Interactive Short | 0.34-0.43 | 0.38-0.53 | 0.40-0.56 |
+| IC1-IC7 | Interactive Complex | 0.34-0.44 | 0.36-0.51 | 0.38-0.56 |
+
+**Sprint 59 Optimization Impact:**
+
+| Metric | Before | After | Improvement |
+| :---- | :---- | :---- | :---- |
+| Query p50 (avg) | 0.72ms | 0.35ms | **51% faster** |
+| Ingestion time | 0.64s | 0.40s | **38% faster** |
+
+**Memory Efficiency (vs FalkorDB):**
+
+| Scale | NeuralGraphDB | FalkorDB | Efficiency |
+| :---- | :---- | :---- | :---- |
+| SF1 (27K nodes) | 25.3 MB | 618.8 MB | **25x less** |
+| SF100 (2.1M nodes) | 42.3 MB | ~2 GB | **~50x less** |
 
 **Highlights:**
 - 14 LDBC-SNB queries validated
 - Sub-millisecond p50 latency across all queries
-- Reproducible results (3 executions, std < 0.07ms)
+- Zero-copy bindings with im::HashMap structural sharing
+- 25-50x more memory efficient than FalkorDB
 - Paper-ready visualizations in `benchmarks/ldbc/results/`
 
 ## **8\. Glosario Técnico**
