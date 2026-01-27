@@ -212,6 +212,12 @@ fn parse_statement_internal(parser: &mut Parser<'_>) -> Result<Statement, ParseE
             parser.next();
             Ok(Statement::Rollback)
         }
+        Some(Token::Flashback) => {
+            parser.next(); // consume FLASHBACK
+            parser.expect(&Token::To)?; // expect TO
+            let timestamp = parse_or_expression(parser)?;
+            Ok(Statement::Flashback { timestamp })
+        }
         Some(Token::Create) => {
             let create_clause = parse_create_clause(parser)?;
             Ok(Statement::Create(create_clause))
@@ -270,7 +276,8 @@ fn parse_statement_internal(parser: &mut Parser<'_>) -> Result<Statement, ParseE
                      _ => {
                          let mut clauses = vec![first_clause];
                          parse_remaining_query_clauses(parser, &mut clauses)?;
-                         Ok(Statement::Query(Query { clauses }))
+                         let temporal = parse_optional_temporal_clause(parser)?;
+                         Ok(Statement::Query(Query { clauses, temporal }))
                      }
                  }
             } else {
@@ -304,7 +311,7 @@ pub fn parse_query(input: &str) -> Result<Query, ParseError> {
 fn parse_query_internal(parser: &mut Parser<'_>) -> Result<Query, ParseError> {
     let mut clauses = Vec::new();
     parse_remaining_query_clauses(parser, &mut clauses)?;
-    
+
     if clauses.is_empty() {
          return Err(ParseError::UnexpectedToken {
             position: parser.pos,
@@ -313,7 +320,8 @@ fn parse_query_internal(parser: &mut Parser<'_>) -> Result<Query, ParseError> {
         });
     }
 
-    Ok(Query { clauses })
+    let temporal = parse_optional_temporal_clause(parser)?;
+    Ok(Query { clauses, temporal })
 }
 
 /// Helper to parse remaining clauses in a pipeline
@@ -344,6 +352,43 @@ fn parse_remaining_query_clauses(parser: &mut Parser<'_>, clauses: &mut Vec<Clau
         }
     }
     Ok(())
+}
+
+/// Parse optional AT TIME/TIMESTAMP clause for time-travel queries (Sprint 54).
+///
+/// Syntax:
+/// - AT TIME '2026-01-15T12:00:00Z'
+/// - AT TIMESTAMP '2026-01-15T12:00:00Z'
+fn parse_optional_temporal_clause(parser: &mut Parser<'_>) -> Result<Option<TemporalClause>, ParseError> {
+    if !matches!(parser.peek(), Some(Token::At)) {
+        return Ok(None);
+    }
+
+    parser.next(); // consume AT
+
+    // Expect TIME or TIMESTAMP
+    match parser.peek() {
+        Some(Token::Time) | Some(Token::Timestamp) => {
+            parser.next(); // consume TIME/TIMESTAMP
+        }
+        Some(token) => {
+            return Err(ParseError::UnexpectedToken {
+                position: parser.pos,
+                expected: "TIME or TIMESTAMP".to_string(),
+                found: format!("{:?}", token),
+            });
+        }
+        None => {
+            return Err(ParseError::UnexpectedEof {
+                expected: "TIME or TIMESTAMP".to_string(),
+            });
+        }
+    }
+
+    // Parse the timestamp expression (string literal, parameter, or function call)
+    let timestamp = parse_or_expression(parser)?;
+
+    Ok(Some(TemporalClause { timestamp }))
 }
 
 // =============================================================================

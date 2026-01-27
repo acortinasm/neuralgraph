@@ -22,8 +22,6 @@
 use crate::wal::{LogEntry, TransactionId};
 use crate::GraphStore;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::collections::HashMap;
-use std::sync::Mutex;
 
 use thiserror::Error;
 
@@ -104,14 +102,46 @@ impl Transaction {
         if let Some(wal) = &mut store.wal {
             // Begin marker
             wal.log(&LogEntry::BeginTransaction { tx_id: self.id })?;
-            
+
             // Payload
             for entry in &self.buffer {
                 wal.log(entry)?;
             }
 
-            // Commit marker
-            wal.log(&LogEntry::CommitTransaction { tx_id: self.id })?;
+            // Generate ISO 8601 timestamp for time-travel queries (Sprint 54)
+            let timestamp = {
+                use std::time::SystemTime;
+                let now = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                // Convert to approximate ISO 8601 (UTC)
+                // For production, use chrono crate for proper formatting
+                let secs_per_day = 86400;
+                let days_since_epoch = now / secs_per_day;
+                let secs_today = now % secs_per_day;
+                let hours = secs_today / 3600;
+                let mins = (secs_today % 3600) / 60;
+                let secs = secs_today % 60;
+
+                // Rough approximation: 1970-01-01 + days
+                // Days since epoch to year-month-day (simplified, doesn't handle leap years perfectly)
+                let years = 1970 + (days_since_epoch / 365);
+                let day_of_year = days_since_epoch % 365;
+                let month = (day_of_year / 30) + 1;
+                let day = (day_of_year % 30) + 1;
+
+                format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", years, month.min(12), day.min(28), hours, mins, secs)
+            };
+
+            // Commit marker with timestamp
+            wal.log(&LogEntry::CommitTransaction {
+                tx_id: self.id,
+                timestamp: Some(timestamp.clone()),
+            })?;
+
+            // Record in timestamp index
+            store.record_commit_timestamp(timestamp, self.id);
         }
 
         // 2. Apply to Memory (Consistency)

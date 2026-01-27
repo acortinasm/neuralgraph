@@ -317,6 +317,78 @@ impl EdgeTypeIndex {
 }
 
 // =============================================================================
+// TimestampIndex - Timestamp to Transaction ID mapping (Sprint 54)
+// =============================================================================
+
+/// Index mapping timestamps to transaction IDs for time-travel queries.
+///
+/// Enables queries like `MATCH (n) AT TIME '2026-01-15T12:00:00Z' RETURN n`
+/// by storing (timestamp, tx_id) pairs from committed transactions.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TimestampIndex {
+    /// Sorted list of (timestamp, tx_id) pairs
+    /// Timestamps are ISO 8601 strings, kept sorted for binary search
+    entries: Vec<(String, TransactionId)>,
+}
+
+impl TimestampIndex {
+    /// Creates a new empty timestamp index.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Records a transaction commit with its timestamp.
+    pub fn record(&mut self, timestamp: String, tx_id: TransactionId) {
+        // Insert in sorted order by timestamp
+        let pos = self.entries.binary_search_by(|(ts, _)| ts.cmp(&timestamp));
+        let insert_pos = match pos {
+            Ok(p) => p,  // Exact match (unlikely but handle it)
+            Err(p) => p, // Insert position
+        };
+        self.entries.insert(insert_pos, (timestamp, tx_id));
+    }
+
+    /// Gets the transaction ID for the most recent commit at or before the given timestamp.
+    ///
+    /// Returns None if no transactions exist at or before the timestamp.
+    pub fn get_tx_at_or_before(&self, timestamp: &str) -> Option<TransactionId> {
+        if self.entries.is_empty() {
+            return None;
+        }
+
+        // Binary search for the position
+        let pos = self.entries.binary_search_by(|(ts, _)| ts.as_str().cmp(timestamp));
+
+        match pos {
+            Ok(p) => Some(self.entries[p].1), // Exact match
+            Err(p) => {
+                // p is where we would insert, so p-1 is the largest <= timestamp
+                if p == 0 {
+                    None // All entries are after the timestamp
+                } else {
+                    Some(self.entries[p - 1].1)
+                }
+            }
+        }
+    }
+
+    /// Returns the number of recorded timestamps.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Returns true if no timestamps are recorded.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Gets the latest recorded transaction ID.
+    pub fn latest_tx_id(&self) -> Option<TransactionId> {
+        self.entries.last().map(|(_, tx_id)| *tx_id)
+    }
+}
+
+// =============================================================================
 // GraphStore
 // =============================================================================
 
@@ -392,6 +464,9 @@ pub struct GraphStore {
     /// Current transaction ID counter (monotonically increasing)
     #[serde(default = "default_tx_counter")]
     current_tx_id: TransactionId,
+    /// Timestamp index for time-travel queries (Sprint 54)
+    #[serde(default)]
+    timestamp_index: TimestampIndex,
 }
 
 fn default_tx_counter() -> TransactionId {
@@ -426,6 +501,7 @@ impl GraphStore {
             wal: None,
             transaction_manager: TransactionManager::new(),
             current_tx_id: 1,
+            timestamp_index: TimestampIndex::new(),
         }
     }
 
@@ -447,6 +523,7 @@ impl GraphStore {
             wal: None,
             transaction_manager: TransactionManager::new(),
             current_tx_id: 1,
+            timestamp_index: TimestampIndex::new(),
         }
     }
 
@@ -471,8 +548,9 @@ impl GraphStore {
             wal: None, // Will be initialized after recovery
             transaction_manager: TransactionManager::new(),
             current_tx_id: 1,
+            timestamp_index: TimestampIndex::new(),
         };
-        
+
         // Attempt to open WAL for recovery
         if wal_path.exists() {
             store.recover_from_wal(&wal_path)?;
@@ -540,9 +618,13 @@ impl GraphStore {
                 self.current_tx_id = self.current_tx_id.max(*tx_id);
                 Ok(())
             }
-            LogEntry::CommitTransaction { tx_id } => {
+            LogEntry::CommitTransaction { tx_id, timestamp } => {
                 // Committed transaction - ensure tx_id is visible
                 self.current_tx_id = self.current_tx_id.max(*tx_id + 1);
+                // Record timestamp for time-travel queries (Sprint 54)
+                if let Some(ts) = timestamp {
+                    self.timestamp_index.record(ts.clone(), *tx_id);
+                }
                 Ok(())
             }
             LogEntry::RollbackTransaction { .. } => {
@@ -1358,6 +1440,43 @@ impl GraphStore {
 
         results
     }
+
+    // =========================================================================
+    // Time-Travel Queries (Sprint 54)
+    // =========================================================================
+
+    /// Records a transaction commit with its timestamp for time-travel queries.
+    pub fn record_commit_timestamp(&mut self, timestamp: String, tx_id: TransactionId) {
+        self.timestamp_index.record(timestamp, tx_id);
+    }
+
+    /// Gets the transaction ID for a given timestamp (for AT TIME queries).
+    ///
+    /// Returns the most recent transaction committed at or before the timestamp.
+    pub fn get_tx_for_timestamp(&self, timestamp: &str) -> Result<TransactionId, String> {
+        self.timestamp_index
+            .get_tx_at_or_before(timestamp)
+            .ok_or_else(|| format!("No transactions found at or before timestamp '{}'", timestamp))
+    }
+
+    /// Flashback the database to a specific timestamp.
+    ///
+    /// This doesn't actually revert data (MVCC preserves history), but returns
+    /// the transaction ID that can be used to query the state at that time.
+    ///
+    /// For true "revert" functionality, this would need to:
+    /// 1. Find the tx_id for the timestamp
+    /// 2. Create new transactions that undo all changes after that point
+    ///
+    /// For now, this is a "read-only flashback" that returns the snapshot ID.
+    pub fn flashback_to_timestamp(&self, timestamp: &str) -> Result<TransactionId, String> {
+        self.get_tx_for_timestamp(timestamp)
+    }
+
+    /// Returns the current timestamp index (for debugging/introspection).
+    pub fn timestamp_index(&self) -> &TimestampIndex {
+        &self.timestamp_index
+    }
 }
 
 // Delegate Graph trait to inner CsrMatrix
@@ -1593,6 +1712,7 @@ impl GraphStoreBuilder {
             wal: None,
             transaction_manager: TransactionManager::new(),
             current_tx_id: initial_tx_id + 1, // Next tx is 2
+            timestamp_index: TimestampIndex::new(),
         }
     }
 }
@@ -1963,5 +2083,93 @@ mod tests {
         // 0->1->5 (len 2)
         let paths = store.find_paths(NodeId::new(0), None, 1, 2, None);
         assert_eq!(paths.len(), 3);
+    }
+
+    // =========================================================================
+    // TimestampIndex Tests (Sprint 54)
+    // =========================================================================
+
+    #[test]
+    fn test_timestamp_index_basic() {
+        let mut index = TimestampIndex::new();
+
+        // Record some transactions
+        index.record("2026-01-15T10:00:00Z".to_string(), 1);
+        index.record("2026-01-15T11:00:00Z".to_string(), 2);
+        index.record("2026-01-15T12:00:00Z".to_string(), 3);
+
+        assert_eq!(index.len(), 3);
+    }
+
+    #[test]
+    fn test_timestamp_index_exact_match() {
+        let mut index = TimestampIndex::new();
+
+        index.record("2026-01-15T10:00:00Z".to_string(), 1);
+        index.record("2026-01-15T11:00:00Z".to_string(), 2);
+        index.record("2026-01-15T12:00:00Z".to_string(), 3);
+
+        // Exact match
+        assert_eq!(index.get_tx_at_or_before("2026-01-15T11:00:00Z"), Some(2));
+    }
+
+    #[test]
+    fn test_timestamp_index_before_match() {
+        let mut index = TimestampIndex::new();
+
+        index.record("2026-01-15T10:00:00Z".to_string(), 1);
+        index.record("2026-01-15T12:00:00Z".to_string(), 3);
+
+        // Between two timestamps - should return the earlier one
+        assert_eq!(index.get_tx_at_or_before("2026-01-15T11:00:00Z"), Some(1));
+    }
+
+    #[test]
+    fn test_timestamp_index_after_all() {
+        let mut index = TimestampIndex::new();
+
+        index.record("2026-01-15T10:00:00Z".to_string(), 1);
+        index.record("2026-01-15T11:00:00Z".to_string(), 2);
+
+        // After all timestamps - should return the last one
+        assert_eq!(index.get_tx_at_or_before("2026-01-16T00:00:00Z"), Some(2));
+    }
+
+    #[test]
+    fn test_timestamp_index_before_all() {
+        let mut index = TimestampIndex::new();
+
+        index.record("2026-01-15T10:00:00Z".to_string(), 1);
+        index.record("2026-01-15T11:00:00Z".to_string(), 2);
+
+        // Before all timestamps - should return None
+        assert_eq!(index.get_tx_at_or_before("2026-01-14T00:00:00Z"), None);
+    }
+
+    #[test]
+    fn test_timestamp_index_empty() {
+        let index = TimestampIndex::new();
+
+        assert!(index.is_empty());
+        assert_eq!(index.get_tx_at_or_before("2026-01-15T12:00:00Z"), None);
+    }
+
+    #[test]
+    fn test_graph_store_time_travel_methods() {
+        let mut store = GraphStore::new_in_memory();
+
+        // Record some timestamps
+        store.record_commit_timestamp("2026-01-15T10:00:00Z".to_string(), 1);
+        store.record_commit_timestamp("2026-01-15T11:00:00Z".to_string(), 2);
+        store.record_commit_timestamp("2026-01-15T12:00:00Z".to_string(), 3);
+
+        // Test get_tx_for_timestamp
+        assert_eq!(store.get_tx_for_timestamp("2026-01-15T11:30:00Z").unwrap(), 2);
+
+        // Test flashback_to_timestamp
+        assert_eq!(store.flashback_to_timestamp("2026-01-15T11:00:00Z").unwrap(), 2);
+
+        // Test error case
+        assert!(store.get_tx_for_timestamp("2026-01-14T00:00:00Z").is_err());
     }
 }

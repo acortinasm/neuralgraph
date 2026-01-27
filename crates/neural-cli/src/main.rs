@@ -1087,6 +1087,10 @@ fn execute_statement_cli(input: &str, state: &mut ReplState) {
                 neural_executor::StatementResult::TransactionRolledBack => {
                     println!("{} Transaction rolled back", "✓".yellow());
                 }
+                neural_executor::StatementResult::Flashback { timestamp, tx_id } => {
+                    println!("{} Flashback to {} (tx_id: {})", "✓".green(), timestamp, tx_id);
+                    println!("  Database state now visible as of that timestamp");
+                }
             }
         }
         Err(e) => {

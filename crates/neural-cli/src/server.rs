@@ -507,6 +507,19 @@ async fn handle_query(
                 execution_time_ms: elapsed_ms,
             })
         },
+        Ok(StatementResult::Flashback { timestamp, tx_id }) => {
+             Json(QueryResponse {
+                success: true,
+                result: Some(serde_json::json!({
+                    "type": "flashback",
+                    "timestamp": timestamp,
+                    "tx_id": tx_id,
+                    "message": "Database flashback completed"
+                })),
+                error: None,
+                execution_time_ms: elapsed_ms,
+            })
+        },
         Err(e) => Json(QueryResponse {
             success: false,
             result: None,

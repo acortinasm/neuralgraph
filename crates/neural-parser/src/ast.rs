@@ -19,10 +19,35 @@ use serde::{Deserialize, Serialize};
 /// WITH a.name AS name
 /// RETURN name
 /// ```
+///
+/// ## Time-Travel Query (Sprint 54)
+///
+/// ```text
+/// MATCH (a:Person) AT TIME '2026-01-15T12:00:00Z'
+/// RETURN a.name
+/// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Query {
     /// The sequence of clauses
     pub clauses: Vec<Clause>,
+    /// Optional temporal clause for time-travel queries (Sprint 54)
+    pub temporal: Option<TemporalClause>,
+}
+
+/// Temporal clause for time-travel queries (Sprint 54).
+///
+/// Allows querying the database as it existed at a specific point in time.
+///
+/// ## Syntax
+///
+/// ```text
+/// AT TIME '2026-01-15T12:00:00Z'
+/// AT TIMESTAMP '2026-01-15T12:00:00Z'
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TemporalClause {
+    /// The timestamp expression (typically a string literal or parameter)
+    pub timestamp: Expression,
 }
 
 /// A clause in a query pipeline.
@@ -98,6 +123,15 @@ pub enum Statement {
     Commit,
     /// Rollback a transaction
     Rollback,
+    /// Flashback to a specific point in time (Sprint 54)
+    ///
+    /// ```text
+    /// FLASHBACK TO '2026-01-15T12:00:00Z'
+    /// ```
+    Flashback {
+        /// The timestamp to revert to
+        timestamp: Expression,
+    },
 }
 
 /// CREATE clause for creating nodes and edges.
@@ -631,7 +665,16 @@ impl std::fmt::Display for Query {
                 Clause::Return(c) => write!(f, "{}", c)?,
             }
         }
+        if let Some(ref temporal) = self.temporal {
+            write!(f, " {}", temporal)?;
+        }
         Ok(())
+    }
+}
+
+impl std::fmt::Display for TemporalClause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "AT TIME {}", self.timestamp)
     }
 }
 
@@ -953,7 +996,32 @@ mod tests {
                     group_by: None,
                 }),
             ],
+            temporal: None,
         };
         assert_eq!(format!("{}", query), "MATCH (n:Person) RETURN n");
+    }
+
+    #[test]
+    fn test_temporal_clause() {
+        let temporal = TemporalClause {
+            timestamp: Expression::Literal(Literal::String("2026-01-15T12:00:00Z".to_string())),
+        };
+        let query = Query {
+            clauses: vec![
+                Clause::Match(MatchClause {
+                    patterns: vec![Pattern::single(NodePattern::with_label("n", "Person"))],
+                    where_clause: None,
+                }),
+                Clause::Return(ReturnClause {
+                    items: vec![ReturnItem::variable("n")],
+                    distinct: false,
+                    order_by: None,
+                    limit: None,
+                    group_by: None,
+                }),
+            ],
+            temporal: Some(temporal),
+        };
+        assert!(query.temporal.is_some());
     }
 }

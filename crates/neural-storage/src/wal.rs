@@ -37,6 +37,10 @@ pub enum LogEntry {
     /// Commit a transaction.
     CommitTransaction {
         tx_id: TransactionId,
+        /// Timestamp of commit (Sprint 54 - Time-Travel)
+        /// ISO 8601 format: "2026-01-15T12:00:00Z"
+        #[serde(default)]
+        timestamp: Option<String>,
     },
     /// Rollback/Abort a transaction.
     RollbackTransaction {

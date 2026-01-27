@@ -104,6 +104,11 @@ pub enum StatementResult {
     TransactionStarted,
     TransactionCommitted,
     TransactionRolledBack,
+    /// Result of a FLASHBACK operation (Sprint 54)
+    Flashback {
+        timestamp: String,
+        tx_id: u64,
+    },
 }
 
 /// Execute an NGQL statement (query or mutation) against a mutable GraphStore.
@@ -249,7 +254,7 @@ pub fn execute_statement_struct(
             let start = std::time::Instant::now();
             let result = execute_statement_struct(store, *inner, params, tx)?;
             let duration = start.elapsed();
-            
+
             match result {
                 StatementResult::Query(mut query_result) => {
                     query_result.add_stat("execution_time", format!("{:?}", duration));
@@ -264,6 +269,21 @@ pub fn execute_statement_struct(
                 other => Ok(other),
             }
         }
+        Statement::Flashback { timestamp } => {
+            // Extract timestamp string from expression
+            let ts = match &timestamp {
+                neural_parser::Expression::Literal(neural_parser::Literal::String(s)) => s.clone(),
+                _ => return Err(ExecutionError::ExecutionError(
+                    "FLASHBACK timestamp must be a string literal".into()
+                )),
+            };
+
+            // Resolve timestamp to transaction ID and flashback
+            match store.flashback_to_timestamp(&ts) {
+                Ok(tx_id) => Ok(StatementResult::Flashback { timestamp: ts, tx_id }),
+                Err(e) => Err(ExecutionError::ExecutionError(format!("Flashback failed: {}", e))),
+            }
+        }
     }
 }
 
@@ -275,7 +295,36 @@ pub fn execute_query_ast(
 ) -> Result<QueryResult> {
     let planner = Planner::new();
     let plan = planner.plan(ast)?;
-    let executor = Executor::new(store);
+
+    // Handle time-travel queries with AT TIME clause (Sprint 54)
+    let executor = if let Some(ref temporal) = ast.temporal {
+        // Extract timestamp string from the temporal expression
+        let timestamp = match &temporal.timestamp {
+            neural_parser::Expression::Literal(neural_parser::Literal::String(s)) => s.clone(),
+            neural_parser::Expression::FunctionCall { name, args } if name.eq_ignore_ascii_case("datetime") => {
+                // datetime('2026-01-15T12:00:00Z')
+                if let Some(neural_parser::Expression::Literal(neural_parser::Literal::String(s))) = args.first() {
+                    s.clone()
+                } else {
+                    return Err(ExecutionError::ExecutionError(
+                        "AT TIME datetime() requires a string argument".into()
+                    ));
+                }
+            }
+            _ => return Err(ExecutionError::ExecutionError(
+                "AT TIME clause requires a string literal or datetime() function".into()
+            )),
+        };
+
+        // Resolve timestamp to snapshot ID
+        let snapshot_id = store.get_tx_for_timestamp(&timestamp)
+            .map_err(|e| ExecutionError::ExecutionError(format!("Failed to resolve timestamp: {}", e)))?;
+
+        Executor::with_snapshot(store, snapshot_id)
+    } else {
+        Executor::new(store)
+    };
+
     executor.execute(&plan, params)
 }
 
@@ -668,7 +717,8 @@ fn execute_delete(
                     limit: None,
                     group_by: None,
                 })
-            ]
+            ],
+            temporal: None,
         };
 
         let result = execute_query_ast(store, &query, params)?;
@@ -736,7 +786,8 @@ fn execute_set(
                 limit: None,
                 group_by: None,
             })
-        ]
+        ],
+        temporal: None,
     };
 
     let result = execute_query_ast(store, &query, params)?;
@@ -813,7 +864,8 @@ fn execute_create_with_match(
                 limit: None,
                 group_by: None,
             })
-        ]
+        ],
+        temporal: None,
     };
 
     // Use read-only query execution first

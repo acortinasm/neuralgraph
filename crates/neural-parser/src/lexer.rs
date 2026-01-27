@@ -240,6 +240,29 @@ pub enum Token<'a> {
     Rollback,
 
     // =========================================================================
+    // Time-Travel Keywords (Sprint 54)
+    // =========================================================================
+    /// AT keyword - for temporal queries (AT TIME '2026-01-15T12:00:00Z')
+    #[token("AT", ignore(ascii_case))]
+    At,
+
+    /// TIME keyword - used with AT for temporal queries
+    #[token("TIME", ignore(ascii_case))]
+    Time,
+
+    /// TIMESTAMP keyword - alternative to TIME
+    #[token("TIMESTAMP", ignore(ascii_case))]
+    Timestamp,
+
+    /// FLASHBACK keyword - revert database state
+    #[token("FLASHBACK", ignore(ascii_case))]
+    Flashback,
+
+    /// TO keyword - used with FLASHBACK TO
+    #[token("TO", ignore(ascii_case))]
+    To,
+
+    // =========================================================================
     // Mutation Keywords (Sprint 21+)
     // =========================================================================
     /// CREATE keyword - create nodes/edges
@@ -419,6 +442,11 @@ impl<'a> Token<'a> {
                 | Token::Rollback
                 | Token::IdFunc
                 | Token::TypeFunc
+                | Token::At
+                | Token::Time
+                | Token::Timestamp
+                | Token::Flashback
+                | Token::To
         )
     }
 
@@ -688,6 +716,39 @@ mod tests {
                 Token::Ident("n"),
                 Token::Dot,
                 Token::Ident("label"),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_time_travel_tokens() {
+        let tokens = tokenize("AT TIME '2026-01-15T12:00:00Z'").unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::At,
+                Token::Time,
+                Token::StringSingle("'2026-01-15T12:00:00Z'"),
+            ]
+        );
+
+        let tokens = tokenize("AT TIMESTAMP '2026-01-15'").unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::At,
+                Token::Timestamp,
+                Token::StringSingle("'2026-01-15'"),
+            ]
+        );
+
+        let tokens = tokenize("FLASHBACK TO '2026-01-14T00:00:00Z'").unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Flashback,
+                Token::To,
+                Token::StringSingle("'2026-01-14T00:00:00Z'"),
             ]
         );
     }
