@@ -216,10 +216,14 @@ fn value_to_key(value: &PropertyValue) -> String {
 ///
 /// Enables fast queries like `MATCH ()-[:CITES]->()` by storing
 /// separate edge lists per type.
+///
+/// ## Port Numbering (Sprint 57)
+///
+/// Each edge entry includes a port number for multi-edge support.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EdgeTypeIndex {
-    /// edge_type -> Vec<(edge_id, source, target)>
-    index: HashMap<String, Vec<(neural_core::EdgeId, NodeId, NodeId)>>,
+    /// edge_type -> Vec<(edge_id, source, target, port)>
+    index: HashMap<String, Vec<(neural_core::EdgeId, NodeId, NodeId, u16)>>,
     /// Total edges indexed
     total_edges: usize,
 }
@@ -230,28 +234,54 @@ impl EdgeTypeIndex {
         Self::default()
     }
 
-    /// Adds an edge with a type to the index.
+    /// Adds an edge with a type to the index (port 0).
     pub fn add(&mut self, edge_id: neural_core::EdgeId, source: NodeId, target: NodeId, edge_type: &str) {
+        self.add_with_port(edge_id, source, target, edge_type, 0);
+    }
+
+    /// Adds an edge with a type and port to the index (Sprint 57).
+    pub fn add_with_port(&mut self, edge_id: neural_core::EdgeId, source: NodeId, target: NodeId, edge_type: &str, port: u16) {
         self.index
             .entry(edge_type.to_string())
             .or_default()
-            .push((edge_id, source, target));
+            .push((edge_id, source, target, port));
         self.total_edges += 1;
     }
 
     /// Gets all edges of a specific type - O(1) lookup.
-    pub fn get(&self, edge_type: &str) -> Option<&[(neural_core::EdgeId, NodeId, NodeId)]> {
+    /// Returns (edge_id, source, target, port) tuples.
+    pub fn get(&self, edge_type: &str) -> Option<&[(neural_core::EdgeId, NodeId, NodeId, u16)]> {
         self.index.get(edge_type).map(|v| v.as_slice())
     }
 
     /// Gets edges from a specific source node with a type.
-    pub fn edges_from(&self, source: NodeId, edge_type: &str) -> impl Iterator<Item = (neural_core::EdgeId, NodeId)> + '_ {
+    pub fn edges_from(&self, source: NodeId, edge_type: &str) -> impl Iterator<Item = (neural_core::EdgeId, NodeId, u16)> + '_ {
         self.index
             .get(edge_type)
             .into_iter()
             .flatten()
-            .filter(move |(_, s, _)| *s == source)
-            .map(|(eid, _, t)| (*eid, *t))
+            .filter(move |(_, s, _, _)| *s == source)
+            .map(|(eid, _, t, port)| (*eid, *t, *port))
+    }
+
+    /// Gets edges from source to target with a specific type and port (Sprint 57).
+    pub fn edge_with_port(&self, source: NodeId, target: NodeId, edge_type: &str, port: u16) -> Option<neural_core::EdgeId> {
+        self.index
+            .get(edge_type)?
+            .iter()
+            .find(|(_, s, t, p)| *s == source && *t == target && *p == port)
+            .map(|(eid, _, _, _)| *eid)
+    }
+
+    /// Gets all ports for edges between source and target with a type (Sprint 57).
+    pub fn ports_between(&self, source: NodeId, target: NodeId, edge_type: &str) -> Vec<u16> {
+        self.index
+            .get(edge_type)
+            .into_iter()
+            .flatten()
+            .filter(|(_, s, t, _)| *s == source && *t == target)
+            .map(|(_, _, _, port)| *port)
+            .collect()
     }
 
     /// Returns the count of edges with a specific type.
@@ -277,7 +307,7 @@ impl EdgeTypeIndex {
     /// Finds the type name for a given edge ID.
     pub fn get_type_by_id(&self, edge_id: neural_core::EdgeId) -> Option<&str> {
         for (etype, edges) in &self.index {
-            if edges.iter().any(|(id, _, _)| *id == edge_id) {
+            if edges.iter().any(|(id, _, _, _)| *id == edge_id) {
                 return Some(etype);
             }
         }
@@ -285,13 +315,27 @@ impl EdgeTypeIndex {
     }
 
     /// Removes an edge from the type index (Sprint 23).
+    /// Removes the first edge matching source and target (any port).
     pub fn remove(&mut self, source: NodeId, target: NodeId, edge_type: &str) {
         if let Some(edges) = self.index.get_mut(edge_type) {
-            if let Some(pos) = edges.iter().position(|(_, s, t)| *s == source && *t == target) {
+            if let Some(pos) = edges.iter().position(|(_, s, t, _)| *s == source && *t == target) {
                 edges.remove(pos);
                 self.total_edges = self.total_edges.saturating_sub(1);
             }
             // Clean up empty type entries
+            if edges.is_empty() {
+                self.index.remove(edge_type);
+            }
+        }
+    }
+
+    /// Removes an edge with a specific port from the type index (Sprint 57).
+    pub fn remove_with_port(&mut self, source: NodeId, target: NodeId, edge_type: &str, port: u16) {
+        if let Some(edges) = self.index.get_mut(edge_type) {
+            if let Some(pos) = edges.iter().position(|(_, s, t, p)| *s == source && *t == target && *p == port) {
+                edges.remove(pos);
+                self.total_edges = self.total_edges.saturating_sub(1);
+            }
             if edges.is_empty() {
                 self.index.remove(edge_type);
             }
@@ -306,7 +350,7 @@ impl EdgeTypeIndex {
         let mut removed = 0;
         for edges in self.index.values_mut() {
             let original_len = edges.len();
-            edges.retain(|(_, s, t)| *s != node && *t != node);
+            edges.retain(|(_, s, t, _)| *s != node && *t != node);
             removed += original_len - edges.len();
         }
         self.total_edges = self.total_edges.saturating_sub(removed);
@@ -882,7 +926,16 @@ impl GraphStore {
             .get(edge_type)
             .into_iter()
             .flatten()
-            .map(|(_, s, t)| (*s, *t))
+            .map(|(_, s, t, _)| (*s, *t))
+    }
+
+    /// Returns edges with type including port numbers (Sprint 57).
+    pub fn edges_with_type_and_ports(&self, edge_type: &str) -> impl Iterator<Item = (NodeId, NodeId, u16)> + '_ {
+        self.edge_type_index
+            .get(edge_type)
+            .into_iter()
+            .flatten()
+            .map(|(_, s, t, port)| (*s, *t, *port))
     }
 
     /// Returns neighbors through edges of a specific type.
@@ -891,7 +944,7 @@ impl GraphStore {
         node: NodeId,
         edge_type: &str,
     ) -> impl Iterator<Item = NodeId> + '_ {
-        self.edge_type_index.edges_from(node, edge_type).map(|(_, t)| t)
+        self.edge_type_index.edges_from(node, edge_type).map(|(_, t, _)| t)
     }
 
     /// Returns neighbors (with IDs) through edges of a specific type.
@@ -900,7 +953,21 @@ impl GraphStore {
         node: NodeId,
         edge_type: &str,
     ) -> impl Iterator<Item = (neural_core::EdgeId, NodeId)> + '_ {
+        self.edge_type_index.edges_from(node, edge_type).map(|(eid, t, _)| (eid, t))
+    }
+
+    /// Returns neighbors with IDs and port numbers (Sprint 57).
+    pub fn neighbors_via_type_with_ports(
+        &self,
+        node: NodeId,
+        edge_type: &str,
+    ) -> impl Iterator<Item = (neural_core::EdgeId, NodeId, u16)> + '_ {
         self.edge_type_index.edges_from(node, edge_type)
+    }
+
+    /// Returns all ports between two nodes for a given edge type (Sprint 57).
+    pub fn ports_between(&self, source: NodeId, target: NodeId, edge_type: &str) -> Vec<u16> {
+        self.edge_type_index.ports_between(source, target, edge_type)
     }
 
     /// Returns the count of edges with a specific type.
@@ -1686,6 +1753,37 @@ impl GraphStoreBuilder {
         self
     }
 
+    /// Adds an edge with a specific port number (Sprint 57).
+    ///
+    /// Use ports for multiple parallel edges between the same node pair.
+    pub fn add_edge_with_port(
+        mut self,
+        source: impl Into<u64>,
+        target: impl Into<u64>,
+        port: u16,
+    ) -> Self {
+        let src = source.into();
+        let tgt = target.into();
+        self.max_node_id = self.max_node_id.max(src).max(tgt);
+        self.edges.push(Edge::with_port(NodeId::new(src), NodeId::new(tgt), port));
+        self
+    }
+
+    /// Adds a labeled edge with a specific port number (Sprint 57).
+    pub fn add_labeled_edge_with_port(
+        mut self,
+        source: impl Into<u64>,
+        target: impl Into<u64>,
+        label: Label,
+        port: u16,
+    ) -> Self {
+        let src = source.into();
+        let tgt = target.into();
+        self.max_node_id = self.max_node_id.max(src).max(tgt);
+        self.edges.push(Edge::with_label_and_port(NodeId::new(src), NodeId::new(tgt), label, port));
+        self
+    }
+
     /// Builds the GraphStore.
     pub fn build(self) -> GraphStore {
         let num_nodes = (self.max_node_id + 1) as usize;
@@ -2002,8 +2100,33 @@ mod tests {
 
         let cites = index.get("CITES").unwrap();
         assert_eq!(cites.len(), 2);
-        assert!(cites.contains(&(neural_core::EdgeId::new(0), NodeId::new(0), NodeId::new(1))));
-        assert!(cites.contains(&(neural_core::EdgeId::new(1), NodeId::new(0), NodeId::new(2))));
+        // Port is 0 by default
+        assert!(cites.contains(&(neural_core::EdgeId::new(0), NodeId::new(0), NodeId::new(1), 0)));
+        assert!(cites.contains(&(neural_core::EdgeId::new(1), NodeId::new(0), NodeId::new(2), 0)));
+    }
+
+    #[test]
+    fn test_edge_type_index_with_ports() {
+        let mut index = EdgeTypeIndex::new();
+
+        // Add multiple parallel edges with different ports
+        index.add_with_port(neural_core::EdgeId::new(0), NodeId::new(0), NodeId::new(1), "TRANSFER", 0);
+        index.add_with_port(neural_core::EdgeId::new(1), NodeId::new(0), NodeId::new(1), "TRANSFER", 1);
+        index.add_with_port(neural_core::EdgeId::new(2), NodeId::new(0), NodeId::new(1), "TRANSFER", 2);
+
+        let transfers = index.get("TRANSFER").unwrap();
+        assert_eq!(transfers.len(), 3);
+
+        // Test ports_between
+        let ports = index.ports_between(NodeId::new(0), NodeId::new(1), "TRANSFER");
+        assert_eq!(ports.len(), 3);
+        assert!(ports.contains(&0));
+        assert!(ports.contains(&1));
+        assert!(ports.contains(&2));
+
+        // Test edge_with_port
+        let eid = index.edge_with_port(NodeId::new(0), NodeId::new(1), "TRANSFER", 1);
+        assert_eq!(eid, Some(neural_core::EdgeId::new(1)));
     }
 
     #[test]

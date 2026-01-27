@@ -269,6 +269,16 @@ impl From<Vec<f32>> for PropertyValue {
 // =============================================================================
 
 /// An edge in the graph, connecting a source node to a target node.
+///
+/// ## Port Numbering (Sprint 57)
+///
+/// The `port` field enables multiple parallel edges between the same node pair.
+/// Each edge with the same (source, target, label) can have a unique port number.
+///
+/// ```text
+/// (A)-[:TRANSFER {port: 0}]->(B)  // First transfer
+/// (A)-[:TRANSFER {port: 1}]->(B)  // Second transfer
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Edge {
     /// Source node ID
@@ -277,19 +287,24 @@ pub struct Edge {
     pub target: NodeId,
     /// Edge label/type (e.g., :KNOWS, :OWNS)
     pub label: Option<Label>,
+    /// Port number for parallel multi-edges (default: 0)
+    /// Enables multiple edges with same (source, target, label)
+    #[serde(default)]
+    pub port: u16,
 }
 
 impl Edge {
-    /// Creates a new edge from source to target.
+    /// Creates a new edge from source to target (port 0).
     pub fn new(source: impl Into<NodeId>, target: impl Into<NodeId>) -> Self {
         Self {
             source: source.into(),
             target: target.into(),
             label: None,
+            port: 0,
         }
     }
 
-    /// Creates a new labeled edge.
+    /// Creates a new labeled edge (port 0).
     pub fn with_label(
         source: impl Into<NodeId>,
         target: impl Into<NodeId>,
@@ -299,7 +314,56 @@ impl Edge {
             source: source.into(),
             target: target.into(),
             label: Some(label.into()),
+            port: 0,
         }
+    }
+
+    /// Creates a new edge with a specific port number.
+    ///
+    /// Use this for parallel multi-edges between the same node pair.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use neural_core::{Edge, NodeId};
+    ///
+    /// // Two parallel TRANSFER edges
+    /// let transfer1 = Edge::with_port(NodeId::new(0), NodeId::new(1), 0);
+    /// let transfer2 = Edge::with_port(NodeId::new(0), NodeId::new(1), 1);
+    /// assert_ne!(transfer1, transfer2);
+    /// ```
+    pub fn with_port(
+        source: impl Into<NodeId>,
+        target: impl Into<NodeId>,
+        port: u16,
+    ) -> Self {
+        Self {
+            source: source.into(),
+            target: target.into(),
+            label: None,
+            port,
+        }
+    }
+
+    /// Creates a labeled edge with a specific port number.
+    pub fn with_label_and_port(
+        source: impl Into<NodeId>,
+        target: impl Into<NodeId>,
+        label: impl Into<Label>,
+        port: u16,
+    ) -> Self {
+        Self {
+            source: source.into(),
+            target: target.into(),
+            label: Some(label.into()),
+            port,
+        }
+    }
+
+    /// Returns true if this edge has the same endpoints and label as another,
+    /// regardless of port number.
+    pub fn same_connection(&self, other: &Edge) -> bool {
+        self.source == other.source && self.target == other.target && self.label == other.label
     }
 }
 

@@ -368,6 +368,15 @@ impl NodePattern {
 }
 
 /// A relationship pattern: `-[:KNOWS]->` or `-[r:KNOWS]->` or `-->`.
+///
+/// ## Port Numbering (Sprint 57)
+///
+/// Supports port syntax for parallel multi-edges:
+/// ```text
+/// -[:DEPENDS_ON:0]->  // Port 0
+/// -[:DEPENDS_ON:1]->  // Port 1
+/// -[r:TRANSFER:2]->   // Named edge with port 2
+/// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RelPattern {
     /// Optional variable binding
@@ -378,6 +387,9 @@ pub struct RelPattern {
     pub direction: Direction,
     /// Variable length pattern (e.g. *1..5)
     pub var_length: Option<VarLength>,
+    /// Port number for parallel multi-edges (Sprint 57)
+    #[serde(default)]
+    pub port: Option<u16>,
 }
 
 /// Variable length definition for relationships.
@@ -397,6 +409,7 @@ impl RelPattern {
             label: None,
             direction: Direction::Outgoing,
             var_length: None,
+            port: None,
         }
     }
 
@@ -407,6 +420,18 @@ impl RelPattern {
             label: Some(label.into()),
             direction: Direction::Outgoing,
             var_length: None,
+            port: None,
+        }
+    }
+
+    /// Creates an outgoing relationship with a label and port (Sprint 57).
+    pub fn outgoing_with_label_and_port(label: impl Into<String>, port: u16) -> Self {
+        Self {
+            identifier: None,
+            label: Some(label.into()),
+            direction: Direction::Outgoing,
+            var_length: None,
+            port: Some(port),
         }
     }
 }
@@ -851,6 +876,10 @@ impl std::fmt::Display for RelPattern {
         }
         if let Some(ref label) = self.label {
             write!(f, ":{}", label)?;
+        }
+        // Port number (Sprint 57)
+        if let Some(port) = self.port {
+            write!(f, ":{}", port)?;
         }
         if let Some(ref var_len) = self.var_length {
             write!(f, "*")?;

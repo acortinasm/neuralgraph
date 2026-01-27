@@ -484,8 +484,8 @@ impl<'a> Executor<'a> {
                                 }
                                 Direction::Incoming => {
                                     store.edge_type_index().get(&edge_type).into_iter().flatten()
-                                        .filter(|(_, _, target)| *target == node_id)
-                                        .map(|(eid, source, _)| (*eid, *source))
+                                        .filter(|(_, _, target, _)| *target == node_id)
+                                        .map(|(eid, source, _, _)| (*eid, *source))
                                         .collect()
                                 }
                             };

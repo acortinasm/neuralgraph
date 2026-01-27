@@ -712,6 +712,7 @@ fn parse_rel_pattern(parser: &mut Parser<'_>) -> Result<RelPattern, ParseError> 
     let mut identifier = None;
     let mut label = None;
     let mut var_length = None;
+    let mut port = None;
 
     if parser.match_token(&Token::LBracket) {
         if let Ok(name_str) = parser.parse_identifier() {
@@ -719,11 +720,27 @@ fn parse_rel_pattern(parser: &mut Parser<'_>) -> Result<RelPattern, ParseError> 
                 identifier = Some(name_str);
                 if let Ok(lbl) = parser.parse_identifier() {
                     label = Some(lbl);
+                    // Check for port: [:LABEL:PORT] (Sprint 57)
+                    if parser.match_token(&Token::Colon) {
+                        if let Some(Token::Integer(s)) = parser.peek().cloned() {
+                            let p: u16 = s.parse().map_err(|_| ParseError::InvalidPattern("Invalid port number".into()))?;
+                            parser.next();
+                            port = Some(p);
+                        }
+                    }
                 }
             } else { identifier = Some(name_str); }
         } else if parser.match_token(&Token::Colon) {
             if let Ok(name) = parser.parse_identifier() {
                 label = Some(name);
+                // Check for port: [:LABEL:PORT] (Sprint 57)
+                if parser.match_token(&Token::Colon) {
+                    if let Some(Token::Integer(s)) = parser.peek().cloned() {
+                        let p: u16 = s.parse().map_err(|_| ParseError::InvalidPattern("Invalid port number".into()))?;
+                        parser.next();
+                        port = Some(p);
+                    }
+                }
             }
         }
         if parser.match_token(&Token::Star) {
@@ -748,7 +765,7 @@ fn parse_rel_pattern(parser: &mut Parser<'_>) -> Result<RelPattern, ParseError> 
     else if parser.match_token(&Token::RightArrow) { Direction::Outgoing }
     else if parser.match_token(&Token::Dash) { Direction::Both }
     else { Direction::Outgoing };
-    Ok(RelPattern { identifier, label, direction, var_length })
+    Ok(RelPattern { identifier, label, direction, var_length, port })
 }
 
 // =============================================================================
