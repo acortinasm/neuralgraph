@@ -1,0 +1,653 @@
+{
+  "database": "neo4j",
+  "scale_factor": "SF1",
+  "timestamp": "2026-01-27T13:54:17.026057",
+  "num_executions": 3,
+  "aggregated": {
+    "IS1": {
+      "count": 30,
+      "mean_ms": 1.665,
+      "median_ms": 1.395,
+      "std_ms": 1.352,
+      "min_ms": 0.789,
+      "max_ms": 8.348,
+      "p50_ms": 1.395,
+      "p95_ms": 2.6,
+      "p99_ms": 6.707
+    },
+    "IS2": {
+      "count": 30,
+      "mean_ms": 1.239,
+      "median_ms": 1.098,
+      "std_ms": 0.858,
+      "min_ms": 0.677,
+      "max_ms": 5.384,
+      "p50_ms": 1.098,
+      "p95_ms": 1.808,
+      "p99_ms": 4.357
+    },
+    "IS3": {
+      "count": 30,
+      "mean_ms": 1.507,
+      "median_ms": 1.379,
+      "std_ms": 0.793,
+      "min_ms": 0.795,
+      "max_ms": 4.942,
+      "p50_ms": 1.379,
+      "p95_ms": 2.273,
+      "p99_ms": 4.18
+    },
+    "IS4": {
+      "count": 30,
+      "mean_ms": 1.099,
+      "median_ms": 1.04,
+      "std_ms": 0.528,
+      "min_ms": 0.638,
+      "max_ms": 3.614,
+      "p50_ms": 1.04,
+      "p95_ms": 1.411,
+      "p99_ms": 2.977
+    },
+    "IS5": {
+      "count": 30,
+      "mean_ms": 0.87,
+      "median_ms": 0.679,
+      "std_ms": 0.587,
+      "min_ms": 0.512,
+      "max_ms": 3.58,
+      "p50_ms": 0.679,
+      "p95_ms": 1.575,
+      "p99_ms": 3.068
+    },
+    "IS6": {
+      "count": 30,
+      "mean_ms": 1.003,
+      "median_ms": 0.773,
+      "std_ms": 0.672,
+      "min_ms": 0.592,
+      "max_ms": 4.262,
+      "p50_ms": 0.773,
+      "p95_ms": 1.477,
+      "p99_ms": 3.456
+    },
+    "IS7": {
+      "count": 30,
+      "mean_ms": 1.16,
+      "median_ms": 0.94,
+      "std_ms": 0.857,
+      "min_ms": 0.66,
+      "max_ms": 5.45,
+      "p50_ms": 0.94,
+      "p95_ms": 1.6,
+      "p99_ms": 4.349
+    },
+    "IC1": {
+      "count": 30,
+      "mean_ms": 1.908,
+      "median_ms": 1.773,
+      "std_ms": 0.887,
+      "min_ms": 0.954,
+      "max_ms": 5.473,
+      "p50_ms": 1.773,
+      "p95_ms": 2.718,
+      "p99_ms": 4.69
+    },
+    "IC2": {
+      "count": 30,
+      "mean_ms": 1.189,
+      "median_ms": 1.041,
+      "std_ms": 0.712,
+      "min_ms": 0.657,
+      "max_ms": 4.625,
+      "p50_ms": 1.041,
+      "p95_ms": 1.711,
+      "p99_ms": 3.799
+    },
+    "IC3": {
+      "count": 30,
+      "mean_ms": 1.239,
+      "median_ms": 1.096,
+      "std_ms": 0.675,
+      "min_ms": 0.783,
+      "max_ms": 4.37,
+      "p50_ms": 1.096,
+      "p95_ms": 2.071,
+      "p99_ms": 3.711
+    },
+    "IC4": {
+      "count": 30,
+      "mean_ms": 1.274,
+      "median_ms": 0.973,
+      "std_ms": 0.717,
+      "min_ms": 0.762,
+      "max_ms": 4.462,
+      "p50_ms": 0.973,
+      "p95_ms": 2.026,
+      "p99_ms": 3.773
+    },
+    "IC5": {
+      "count": 30,
+      "mean_ms": 1.143,
+      "median_ms": 0.964,
+      "std_ms": 0.713,
+      "min_ms": 0.71,
+      "max_ms": 4.598,
+      "p50_ms": 0.964,
+      "p95_ms": 1.791,
+      "p99_ms": 3.796
+    },
+    "IC6": {
+      "count": 30,
+      "mean_ms": 3.06,
+      "median_ms": 1.07,
+      "std_ms": 9.564,
+      "min_ms": 0.866,
+      "max_ms": 53.576,
+      "p50_ms": 1.07,
+      "p95_ms": 3.245,
+      "p99_ms": 39.262
+    },
+    "IC7": {
+      "count": 30,
+      "mean_ms": 1.106,
+      "median_ms": 0.908,
+      "std_ms": 0.748,
+      "min_ms": 0.644,
+      "max_ms": 4.686,
+      "p50_ms": 0.908,
+      "p95_ms": 1.864,
+      "p99_ms": 3.966
+    }
+  },
+  "executions": [
+    {
+      "execution_id": 1,
+      "timestamp": "2026-01-27T13:54:17.026125",
+      "ingestion_time_s": 3.608273709000059,
+      "total_nodes": 10000,
+      "total_edges": 175449,
+      "queries": {
+        "IS1": {
+          "count": 10,
+          "mean_ms": 2.613,
+          "median_ms": 1.91,
+          "std_ms": 2.045,
+          "min_ms": 1.627,
+          "max_ms": 8.348,
+          "p50_ms": 1.91,
+          "p95_ms": 5.802,
+          "p99_ms": 7.839
+        },
+        "IS2": {
+          "count": 10,
+          "mean_ms": 1.923,
+          "median_ms": 1.497,
+          "std_ms": 1.231,
+          "min_ms": 1.291,
+          "max_ms": 5.384,
+          "p50_ms": 1.497,
+          "p95_ms": 3.791,
+          "p99_ms": 5.065
+        },
+        "IS3": {
+          "count": 10,
+          "mean_ms": 2.218,
+          "median_ms": 1.886,
+          "std_ms": 0.989,
+          "min_ms": 1.602,
+          "max_ms": 4.942,
+          "p50_ms": 1.886,
+          "p95_ms": 3.759,
+          "p99_ms": 4.706
+        },
+        "IS4": {
+          "count": 10,
+          "mean_ms": 1.445,
+          "median_ms": 1.232,
+          "std_ms": 0.773,
+          "min_ms": 1.023,
+          "max_ms": 3.614,
+          "p50_ms": 1.232,
+          "p95_ms": 2.625,
+          "p99_ms": 3.416
+        },
+        "IS5": {
+          "count": 10,
+          "mean_ms": 1.321,
+          "median_ms": 1.013,
+          "std_ms": 0.845,
+          "min_ms": 0.838,
+          "max_ms": 3.58,
+          "p50_ms": 1.013,
+          "p95_ms": 2.786,
+          "p99_ms": 3.421
+        },
+        "IS6": {
+          "count": 10,
+          "mean_ms": 1.55,
+          "median_ms": 1.337,
+          "std_ms": 0.97,
+          "min_ms": 0.964,
+          "max_ms": 4.262,
+          "p50_ms": 1.337,
+          "p95_ms": 3.011,
+          "p99_ms": 4.012
+        },
+        "IS7": {
+          "count": 10,
+          "mean_ms": 1.772,
+          "median_ms": 1.354,
+          "std_ms": 1.303,
+          "min_ms": 1.09,
+          "max_ms": 5.45,
+          "p50_ms": 1.354,
+          "p95_ms": 3.742,
+          "p99_ms": 5.108
+        },
+        "IC1": {
+          "count": 10,
+          "mean_ms": 2.762,
+          "median_ms": 2.48,
+          "std_ms": 0.967,
+          "min_ms": 2.174,
+          "max_ms": 5.473,
+          "p50_ms": 2.48,
+          "p95_ms": 4.258,
+          "p99_ms": 5.23
+        },
+        "IC2": {
+          "count": 10,
+          "mean_ms": 1.652,
+          "median_ms": 1.321,
+          "std_ms": 1.066,
+          "min_ms": 1.037,
+          "max_ms": 4.625,
+          "p50_ms": 1.321,
+          "p95_ms": 3.343,
+          "p99_ms": 4.369
+        },
+        "IC3": {
+          "count": 10,
+          "mean_ms": 1.687,
+          "median_ms": 1.394,
+          "std_ms": 0.979,
+          "min_ms": 1.162,
+          "max_ms": 4.37,
+          "p50_ms": 1.394,
+          "p95_ms": 3.323,
+          "p99_ms": 4.161
+        },
+        "IC4": {
+          "count": 10,
+          "mean_ms": 1.96,
+          "median_ms": 1.649,
+          "std_ms": 0.911,
+          "min_ms": 1.357,
+          "max_ms": 4.462,
+          "p50_ms": 1.649,
+          "p95_ms": 3.392,
+          "p99_ms": 4.248
+        },
+        "IC5": {
+          "count": 10,
+          "mean_ms": 1.624,
+          "median_ms": 1.221,
+          "std_ms": 1.087,
+          "min_ms": 0.986,
+          "max_ms": 4.598,
+          "p50_ms": 1.221,
+          "p95_ms": 3.353,
+          "p99_ms": 4.349
+        },
+        "IC6": {
+          "count": 10,
+          "mean_ms": 7.112,
+          "median_ms": 1.851,
+          "std_ms": 16.348,
+          "min_ms": 1.099,
+          "max_ms": 53.576,
+          "p50_ms": 1.851,
+          "p95_ms": 31.365,
+          "p99_ms": 49.133
+        },
+        "IC7": {
+          "count": 10,
+          "mean_ms": 1.567,
+          "median_ms": 1.248,
+          "std_ms": 1.106,
+          "min_ms": 1.046,
+          "max_ms": 4.686,
+          "p50_ms": 1.248,
+          "p95_ms": 3.231,
+          "p99_ms": 4.395
+        }
+      }
+    },
+    {
+      "execution_id": 2,
+      "timestamp": "2026-01-27T13:54:21.903618",
+      "ingestion_time_s": 2.713581708001584,
+      "total_nodes": 10000,
+      "total_edges": 175449,
+      "queries": {
+        "IS1": {
+          "count": 10,
+          "mean_ms": 1.441,
+          "median_ms": 1.395,
+          "std_ms": 0.196,
+          "min_ms": 1.211,
+          "max_ms": 1.755,
+          "p50_ms": 1.395,
+          "p95_ms": 1.742,
+          "p99_ms": 1.752
+        },
+        "IS2": {
+          "count": 10,
+          "mean_ms": 1.058,
+          "median_ms": 1.098,
+          "std_ms": 0.136,
+          "min_ms": 0.856,
+          "max_ms": 1.235,
+          "p50_ms": 1.098,
+          "p95_ms": 1.205,
+          "p99_ms": 1.229
+        },
+        "IS3": {
+          "count": 10,
+          "mean_ms": 1.409,
+          "median_ms": 1.379,
+          "std_ms": 0.23,
+          "min_ms": 1.125,
+          "max_ms": 1.777,
+          "p50_ms": 1.379,
+          "p95_ms": 1.741,
+          "p99_ms": 1.77
+        },
+        "IS4": {
+          "count": 10,
+          "mean_ms": 0.951,
+          "median_ms": 0.863,
+          "std_ms": 0.19,
+          "min_ms": 0.799,
+          "max_ms": 1.406,
+          "p50_ms": 0.863,
+          "p95_ms": 1.261,
+          "p99_ms": 1.377
+        },
+        "IS5": {
+          "count": 10,
+          "mean_ms": 0.737,
+          "median_ms": 0.679,
+          "std_ms": 0.196,
+          "min_ms": 0.622,
+          "max_ms": 1.283,
+          "p50_ms": 0.679,
+          "p95_ms": 1.038,
+          "p99_ms": 1.234
+        },
+        "IS6": {
+          "count": 10,
+          "mean_ms": 0.756,
+          "median_ms": 0.75,
+          "std_ms": 0.067,
+          "min_ms": 0.669,
+          "max_ms": 0.885,
+          "p50_ms": 0.75,
+          "p95_ms": 0.855,
+          "p99_ms": 0.879
+        },
+        "IS7": {
+          "count": 10,
+          "mean_ms": 0.947,
+          "median_ms": 0.915,
+          "std_ms": 0.1,
+          "min_ms": 0.865,
+          "max_ms": 1.201,
+          "p50_ms": 0.915,
+          "p95_ms": 1.11,
+          "p99_ms": 1.183
+        },
+        "IC1": {
+          "count": 10,
+          "mean_ms": 1.797,
+          "median_ms": 1.773,
+          "std_ms": 0.376,
+          "min_ms": 1.365,
+          "max_ms": 2.569,
+          "p50_ms": 1.773,
+          "p95_ms": 2.355,
+          "p99_ms": 2.526
+        },
+        "IC2": {
+          "count": 10,
+          "mean_ms": 1.097,
+          "median_ms": 1.039,
+          "std_ms": 0.118,
+          "min_ms": 1.001,
+          "max_ms": 1.313,
+          "p50_ms": 1.039,
+          "p95_ms": 1.302,
+          "p99_ms": 1.311
+        },
+        "IC3": {
+          "count": 10,
+          "mean_ms": 0.974,
+          "median_ms": 0.913,
+          "std_ms": 0.143,
+          "min_ms": 0.835,
+          "max_ms": 1.248,
+          "p50_ms": 0.913,
+          "p95_ms": 1.205,
+          "p99_ms": 1.239
+        },
+        "IC4": {
+          "count": 10,
+          "mean_ms": 1.017,
+          "median_ms": 0.973,
+          "std_ms": 0.143,
+          "min_ms": 0.879,
+          "max_ms": 1.396,
+          "p50_ms": 0.973,
+          "p95_ms": 1.249,
+          "p99_ms": 1.366
+        },
+        "IC5": {
+          "count": 10,
+          "mean_ms": 1.012,
+          "median_ms": 0.964,
+          "std_ms": 0.207,
+          "min_ms": 0.851,
+          "max_ms": 1.575,
+          "p50_ms": 0.964,
+          "p95_ms": 1.339,
+          "p99_ms": 1.527
+        },
+        "IC6": {
+          "count": 10,
+          "mean_ms": 1.034,
+          "median_ms": 1.007,
+          "std_ms": 0.094,
+          "min_ms": 0.92,
+          "max_ms": 1.179,
+          "p50_ms": 1.007,
+          "p95_ms": 1.173,
+          "p99_ms": 1.178
+        },
+        "IC7": {
+          "count": 10,
+          "mean_ms": 0.825,
+          "median_ms": 0.801,
+          "std_ms": 0.083,
+          "min_ms": 0.727,
+          "max_ms": 0.963,
+          "p50_ms": 0.801,
+          "p95_ms": 0.954,
+          "p99_ms": 0.962
+        }
+      }
+    },
+    {
+      "execution_id": 3,
+      "timestamp": "2026-01-27T13:54:25.680181",
+      "ingestion_time_s": 2.531017500001326,
+      "total_nodes": 10000,
+      "total_edges": 175449,
+      "queries": {
+        "IS1": {
+          "count": 10,
+          "mean_ms": 0.94,
+          "median_ms": 0.867,
+          "std_ms": 0.178,
+          "min_ms": 0.789,
+          "max_ms": 1.361,
+          "p50_ms": 0.867,
+          "p95_ms": 1.236,
+          "p99_ms": 1.336
+        },
+        "IS2": {
+          "count": 10,
+          "mean_ms": 0.736,
+          "median_ms": 0.731,
+          "std_ms": 0.062,
+          "min_ms": 0.677,
+          "max_ms": 0.893,
+          "p50_ms": 0.731,
+          "p95_ms": 0.833,
+          "p99_ms": 0.881
+        },
+        "IS3": {
+          "count": 10,
+          "mean_ms": 0.894,
+          "median_ms": 0.877,
+          "std_ms": 0.082,
+          "min_ms": 0.795,
+          "max_ms": 1.083,
+          "p50_ms": 0.877,
+          "p95_ms": 1.021,
+          "p99_ms": 1.07
+        },
+        "IS4": {
+          "count": 10,
+          "mean_ms": 0.901,
+          "median_ms": 0.875,
+          "std_ms": 0.254,
+          "min_ms": 0.638,
+          "max_ms": 1.329,
+          "p50_ms": 0.875,
+          "p95_ms": 1.305,
+          "p99_ms": 1.324
+        },
+        "IS5": {
+          "count": 10,
+          "mean_ms": 0.553,
+          "median_ms": 0.542,
+          "std_ms": 0.038,
+          "min_ms": 0.512,
+          "max_ms": 0.617,
+          "p50_ms": 0.542,
+          "p95_ms": 0.606,
+          "p99_ms": 0.615
+        },
+        "IS6": {
+          "count": 10,
+          "mean_ms": 0.703,
+          "median_ms": 0.675,
+          "std_ms": 0.087,
+          "min_ms": 0.592,
+          "max_ms": 0.895,
+          "p50_ms": 0.675,
+          "p95_ms": 0.845,
+          "p99_ms": 0.885
+        },
+        "IS7": {
+          "count": 10,
+          "mean_ms": 0.761,
+          "median_ms": 0.716,
+          "std_ms": 0.135,
+          "min_ms": 0.66,
+          "max_ms": 1.079,
+          "p50_ms": 0.716,
+          "p95_ms": 1.007,
+          "p99_ms": 1.064
+        },
+        "IC1": {
+          "count": 10,
+          "mean_ms": 1.165,
+          "median_ms": 1.181,
+          "std_ms": 0.134,
+          "min_ms": 0.954,
+          "max_ms": 1.352,
+          "p50_ms": 1.181,
+          "p95_ms": 1.333,
+          "p99_ms": 1.348
+        },
+        "IC2": {
+          "count": 10,
+          "mean_ms": 0.819,
+          "median_ms": 0.72,
+          "std_ms": 0.289,
+          "min_ms": 0.657,
+          "max_ms": 1.631,
+          "p50_ms": 0.72,
+          "p95_ms": 1.263,
+          "p99_ms": 1.557
+        },
+        "IC3": {
+          "count": 10,
+          "mean_ms": 1.055,
+          "median_ms": 0.915,
+          "std_ms": 0.39,
+          "min_ms": 0.783,
+          "max_ms": 2.095,
+          "p50_ms": 0.915,
+          "p95_ms": 1.699,
+          "p99_ms": 2.016
+        },
+        "IC4": {
+          "count": 10,
+          "mean_ms": 0.846,
+          "median_ms": 0.84,
+          "std_ms": 0.07,
+          "min_ms": 0.762,
+          "max_ms": 0.961,
+          "p50_ms": 0.84,
+          "p95_ms": 0.948,
+          "p99_ms": 0.958
+        },
+        "IC5": {
+          "count": 10,
+          "mean_ms": 0.794,
+          "median_ms": 0.8,
+          "std_ms": 0.054,
+          "min_ms": 0.71,
+          "max_ms": 0.88,
+          "p50_ms": 0.8,
+          "p95_ms": 0.862,
+          "p99_ms": 0.876
+        },
+        "IC6": {
+          "count": 10,
+          "mean_ms": 1.034,
+          "median_ms": 0.909,
+          "std_ms": 0.335,
+          "min_ms": 0.866,
+          "max_ms": 1.971,
+          "p50_ms": 0.909,
+          "p95_ms": 1.572,
+          "p99_ms": 1.891
+        },
+        "IC7": {
+          "count": 10,
+          "mean_ms": 0.926,
+          "median_ms": 0.767,
+          "std_ms": 0.459,
+          "min_ms": 0.644,
+          "max_ms": 2.201,
+          "p50_ms": 0.767,
+          "p95_ms": 1.63,
+          "p99_ms": 2.087
+        }
+      }
+    }
+  ]
+}

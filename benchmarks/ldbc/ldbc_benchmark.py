@@ -81,8 +81,8 @@ CONFIG = {
         "http_url": "http://localhost:3000/api/query",
     },
     "neo4j": {
-        "uri": "bolt://localhost:17687",
-        "auth": ("neo4j", "benchmark123"),
+        "uri": "bolt://localhost:7687",
+        "auth": ("neo4j", "testpass123"),
     },
     "falkordb": {
         "host": "localhost",
@@ -275,6 +275,7 @@ class NeuralGraphAdapter(DatabaseAdapter):
     def __init__(self):
         self.url = CONFIG["neuralgraph"]["http_url"]
         self.connected = False
+        self.session = requests.Session()
 
     def connect(self) -> bool:
         try:
@@ -293,7 +294,7 @@ class NeuralGraphAdapter(DatabaseAdapter):
         requests.post(self.url, json={"query": "MATCH (n) DETACH DELETE n"}, timeout=120)
 
     def _query(self, cypher: str, timeout: int = 300) -> dict:
-        response = requests.post(self.url, json={"query": cypher}, timeout=timeout)
+        response = self.session.post(self.url, json={"query": cypher}, timeout=timeout)
         if response.status_code != 200:
             raise Exception(f"Query failed: {response.text}")
         return response.json()
@@ -302,6 +303,9 @@ class NeuralGraphAdapter(DatabaseAdapter):
         start = time.perf_counter()
         total_nodes = 0
         total_edges = 0
+
+        # Use larger batches for large datasets
+        batch_size = 2000
 
         # Create indexes
         try:
@@ -327,7 +331,7 @@ class NeuralGraphAdapter(DatabaseAdapter):
                         "birthday": row.get("birthday", ""),
                         "creationDate": row.get("creationDate", ""),
                     })
-                    if len(batch) >= 500:
+                    if len(batch) >= batch_size:
                         self._batch_create_nodes("Person", batch)
                         total_nodes += len(batch)
                         batch = []
@@ -347,7 +351,7 @@ class NeuralGraphAdapter(DatabaseAdapter):
                         "tgt": int(row["Person2Id"]),
                         "creationDate": row.get("creationDate", "")
                     })
-                    if len(batch) >= 500:
+                    if len(batch) >= batch_size:
                         self._batch_create_edges("Person", "Person", "KNOWS", batch)
                         total_edges += len(batch)
                         batch = []
