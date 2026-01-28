@@ -167,6 +167,14 @@ impl<'a> ShardRouter<'a> {
         QueryPlan::single_shard(shard, is_local)
     }
 
+    /// Plans for distributed vector search.
+    ///
+    /// Vector search always requires all shards since vectors may be distributed
+    /// across the cluster and we need global top-k results.
+    pub fn plan_vector_search(&self) -> QueryPlan {
+        QueryPlan::all_shards(self.manager.num_shards(), self.manager.local_shard_id())
+    }
+
     /// Analyzes a query string and determines routing.
     ///
     /// This is a simplified analysis - a full implementation would parse
@@ -285,5 +293,18 @@ mod tests {
 
         assert_eq!(plan1.estimated_cost, 1);
         assert_eq!(plan4.estimated_cost, 4);
+    }
+
+    #[test]
+    fn test_plan_vector_search() {
+        let manager = make_manager(4, Some(0));
+        let router = ShardRouter::new(&manager);
+
+        let plan = router.plan_vector_search();
+
+        // Vector search should hit all shards
+        assert_eq!(plan.target_shards.len(), 4);
+        assert!(plan.requires_merge);
+        assert!(!plan.local_only); // Even with local shard, we need all shards
     }
 }

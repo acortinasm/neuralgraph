@@ -38,6 +38,12 @@ serde_json = "1"
 # Timestamps for embedding metadata (Sprint 56)
 chrono = { version = "0.4", features = ["serde"] }
 
+# Distributed vector search (Sprint 60)
+ordered-float = "4.0"
+lru = "0.12"
+dashmap = "5.5"
+futures = "0.3"
+
 # Raft consensus (Sprint 52)
 openraft = { version = "0.9", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }
@@ -58,4 +64,8 @@ rand = "0.8"
 
 [[bench]]
 name = "sharding_bench"
+harness = false
+
+[[bench]]
+name = "distributed_vector_bench"
 harness = false

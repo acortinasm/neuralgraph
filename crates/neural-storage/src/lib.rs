@@ -31,6 +31,11 @@ pub use vector_index::{
     VectorIndex, VectorIndexConfig,
     // Sprint 56: Embedding Metadata
     DistanceMetric, EmbeddingMetadata, IndexMetadata,
+    // Sprint 60: Distributed Vector Search
+    DistributedVectorIndex, DistributedVectorConfig,
+    QueryResultCache, CacheStats,
+    VectorShardClient, VectorClientPool, VectorClientError,
+    LoadBalancer, RoundRobinBalancer, LatencyAwareBalancer, WeightedBalancer,
 };
 pub use transaction::TransactionManager;
 // pub use persistence::Persistence; // Removed as it doesn't exist

@@ -303,6 +303,10 @@ impl std::fmt::Debug for ShardCoordinator {
 /// Utilities for merging shard results.
 pub mod merge {
     use super::*;
+    use neural_core::NodeId;
+    use ordered_float::OrderedFloat;
+    use std::cmp::Reverse;
+    use std::collections::BinaryHeap;
 
     /// Concatenates raw data from all shards.
     pub fn concat_data(results: &[ShardResult]) -> Vec<u8> {
@@ -327,6 +331,92 @@ pub mod merge {
     /// Checks if all results are complete (non-partial).
     pub fn all_complete(results: &[ShardResult]) -> bool {
         results.iter().all(|r| !r.is_partial)
+    }
+
+    /// Merges vector search results from multiple shards.
+    ///
+    /// Uses a min-heap to efficiently find the top-k highest scoring results
+    /// across all shards.
+    ///
+    /// # Arguments
+    ///
+    /// * `results` - Shard results containing serialized (NodeId, score) pairs
+    /// * `k` - Number of top results to return
+    ///
+    /// # Returns
+    ///
+    /// Top-k results sorted by score (highest first).
+    ///
+    /// # Data Format
+    ///
+    /// Each shard result's data field should contain:
+    /// - Repeated entries of: 8 bytes (u64 node_id) + 4 bytes (f32 score)
+    pub fn merge_vector_results(
+        results: &[ShardResult],
+        k: usize,
+    ) -> Result<Vec<(NodeId, f32)>, String> {
+        // Min-heap: store (score, node_id), smallest score at top
+        let mut heap: BinaryHeap<Reverse<(OrderedFloat<f32>, NodeId)>> =
+            BinaryHeap::with_capacity(k + 1);
+
+        for result in results {
+            if result.is_partial {
+                continue; // Skip failed shards
+            }
+
+            // Parse serialized results
+            let entries = deserialize_vector_results(&result.data)?;
+
+            for (node_id, score) in entries {
+                heap.push(Reverse((OrderedFloat(score), node_id)));
+                if heap.len() > k {
+                    heap.pop(); // Remove smallest
+                }
+            }
+        }
+
+        // Extract from heap and sort by score descending
+        let mut merged: Vec<_> = heap
+            .into_iter()
+            .map(|Reverse((score, node_id))| (node_id, score.0))
+            .collect();
+
+        merged.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(merged)
+    }
+
+    /// Serializes vector results for transport.
+    ///
+    /// Format: Repeated [u64 node_id (LE), f32 score (LE)]
+    pub fn serialize_vector_results(results: &[(NodeId, f32)]) -> Vec<u8> {
+        let mut data = Vec::with_capacity(results.len() * 12);
+        for (node_id, score) in results {
+            data.extend_from_slice(&node_id.as_u64().to_le_bytes());
+            data.extend_from_slice(&score.to_le_bytes());
+        }
+        data
+    }
+
+    /// Deserializes vector results from transport format.
+    fn deserialize_vector_results(data: &[u8]) -> Result<Vec<(NodeId, f32)>, String> {
+        if data.len() % 12 != 0 {
+            return Err(format!(
+                "Invalid data length: {} bytes (expected multiple of 12)",
+                data.len()
+            ));
+        }
+
+        let mut results = Vec::with_capacity(data.len() / 12);
+        for chunk in data.chunks_exact(12) {
+            let node_id = u64::from_le_bytes([
+                chunk[0], chunk[1], chunk[2], chunk[3],
+                chunk[4], chunk[5], chunk[6], chunk[7],
+            ]);
+            let score = f32::from_le_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]);
+            results.push((NodeId::new(node_id), score));
+        }
+
+        Ok(results)
     }
 }
 
@@ -435,6 +525,76 @@ mod tests {
         assert_eq!(merge::sum_counts(&results), 8);
         assert_eq!(merge::max_time(&results), 200);
         assert!(merge::all_complete(&results));
+    }
+
+    #[test]
+    fn test_merge_vector_results() {
+        use neural_core::NodeId;
+
+        // Create shard results with serialized vector data
+        let shard0_results = vec![
+            (NodeId::new(1), 0.9f32),
+            (NodeId::new(2), 0.7f32),
+        ];
+        let shard1_results = vec![
+            (NodeId::new(3), 0.95f32),
+            (NodeId::new(4), 0.6f32),
+        ];
+
+        let results = vec![
+            ShardResult::new(0, merge::serialize_vector_results(&shard0_results), 2),
+            ShardResult::new(1, merge::serialize_vector_results(&shard1_results), 2),
+        ];
+
+        let merged = merge::merge_vector_results(&results, 3).unwrap();
+
+        assert_eq!(merged.len(), 3);
+        // Highest scores first
+        assert_eq!(merged[0].0, NodeId::new(3)); // 0.95
+        assert_eq!(merged[1].0, NodeId::new(1)); // 0.9
+        assert_eq!(merged[2].0, NodeId::new(2)); // 0.7
+    }
+
+    #[test]
+    fn test_merge_vector_results_with_partial() {
+        use neural_core::NodeId;
+
+        let shard0_results = vec![(NodeId::new(1), 0.9f32)];
+
+        let results = vec![
+            ShardResult::new(0, merge::serialize_vector_results(&shard0_results), 1),
+            ShardResult::unavailable(1), // Partial result
+        ];
+
+        let merged = merge::merge_vector_results(&results, 5).unwrap();
+
+        // Should only have results from shard 0
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].0, NodeId::new(1));
+    }
+
+    #[test]
+    fn test_serialize_deserialize_vector_results() {
+        use neural_core::NodeId;
+
+        let original = vec![
+            (NodeId::new(100), 0.95f32),
+            (NodeId::new(200), 0.85f32),
+            (NodeId::new(300), 0.75f32),
+        ];
+
+        let serialized = merge::serialize_vector_results(&original);
+        assert_eq!(serialized.len(), 36); // 3 * 12 bytes
+
+        // Create a shard result with the serialized data
+        let results = vec![ShardResult::new(0, serialized, 3)];
+        let restored = merge::merge_vector_results(&results, 10).unwrap();
+
+        // Should match original (sorted by score desc)
+        assert_eq!(restored.len(), 3);
+        assert_eq!(restored[0], (NodeId::new(100), 0.95));
+        assert_eq!(restored[1], (NodeId::new(200), 0.85));
+        assert_eq!(restored[2], (NodeId::new(300), 0.75));
     }
 
     #[test]
