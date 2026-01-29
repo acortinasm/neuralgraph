@@ -10,6 +10,9 @@ Versión: 8.0
 > **Nota v8.0:** Reestructuración basada en análisis competitivo vs FalkorDB.
 > Prioriza features críticas para adopción de mercado (Full-Text, LangChain, LlamaIndex).
 
+> **Sprint 61 Completado:** Distributed Vector Search con scatter-gather, replica failover,
+> Prometheus metrics y gRPC server.
+
 ---
 
 ## **Fase 1: El Motor Algebraico (Meses 1-4)** ✅ COMPLETADA
@@ -124,10 +127,10 @@ Demostrar rendimiento competitivo vs Neo4j/FalkorDB.
 * **US-19.1:** ✅ Como Investigador, quiero benchmarks LDBC validados para el paper académico.
 * **US-19.2:** ✅ Como Sistema, quiero query latency <0.35ms para competir con FalkorDB. **Resultado: 0.72ms → 0.35ms (51% mejora)**
 
-#### **Épica 20: Búsqueda Vectorial Distribuida** 🔄 EN PROGRESO
+#### **Épica 20: Búsqueda Vectorial Distribuida** ✅ COMPLETADA
 
 * **US-20.1:** ✅ Como Sistema, quiero cuantización dinámica (Flash Quantization) f32→int8 para reducir memoria 4x.
-* **US-20.2:** 📅 Como Sistema, quiero búsqueda vectorial distribuida con fusión de resultados paralela.
+* **US-20.2:** ✅ Como Sistema, quiero búsqueda vectorial distribuida con fusión de resultados paralela. **Implementado: Scatter-gather, replica failover, Prometheus metrics, gRPC server.**
 
 #### **Épica 21: Full-Text Search** 📅 NUEVA (Análisis Competitivo)
 
@@ -158,7 +161,7 @@ Expectativa de mercado. FalkorDB tiene integración nativa.
 | **Sprint 58** | **LDBC Validation** | Benchmarks completos vs Neo4j/FalkorDB para paper. | ✅ | Perf |
 | **Sprint 59** | **Query Latency Optimization** | Zero-copy bindings, direct serialization. **51% mejora** | ✅ | Perf |
 | **Sprint 60** | **Flash Quantization** | Cuantización f32→int8/binary, 4x-32x memoria. | ✅ | Perf |
-| **Sprint 61** | **Distributed Vector Search** | Búsqueda paralela en múltiples nodos + fusión. | 📅 | Perf |
+| **Sprint 61** | **Distributed Vector Search** | Scatter-gather + replica failover + Prometheus metrics + gRPC server. | ✅ | Perf |
 | **Sprint 62** | **Full-Text Index (Core)** | Índice invertido con tantivy. Stemming básico. | 📅 | **P0** |
 | **Sprint 63** | **Full-Text Search (Advanced)** | Fuzzy matching, phonetic search, multi-language. | 📅 | **P0** |
 | **Sprint 64** | **Array/Map Data Types** | Tipos nativos Array y Map/JSON en propiedades. | 📅 | **P0** |
@@ -393,7 +396,7 @@ Fase 6 (Infra)     Fase 7 (Competitive)    Fase 8 (Perf)      Fase 9 (AI)       
 Raft (52) ✅
   └─► Cluster (53)
         └─► Time-Travel (54) ✅
-              └─► Sharding (55) ✅ ───► Distributed Search (61)
+              └─► Sharding (55) ✅ ───► Distributed Search (61) ✅
                                               │
 Flash Quant (60) ✅ ─────────────────────────►│
                                               │
