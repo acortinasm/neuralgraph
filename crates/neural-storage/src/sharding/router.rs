@@ -132,7 +132,7 @@ impl<'a> ShardRouter<'a> {
     }
 
     /// Plans a traversal starting from a specific node.
-    pub fn plan_traversal(&self, start_node: NodeId, hops: u32) -> QueryPlan {
+    pub fn plan_traversal(&self, _start_node: NodeId, hops: u32) -> QueryPlan {
         // For single-hop, we might stay on one shard (if using vertex-cut)
         // For multi-hop, we likely need all shards
         if hops <= 1 {

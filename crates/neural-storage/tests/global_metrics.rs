@@ -57,15 +57,16 @@ const STANDARD_SCALE: TestScale = TestScale {
     num_queries: 500,
 };
 
-// Uncomment for large-scale testing
-// const LARGE_SCALE: TestScale = TestScale {
-//     name: "Large",
-//     vector_count: 1_000_000,
-//     vector_dim: 768,
-//     graph_nodes: 1_000_000,
-//     graph_avg_degree: 15,
-//     num_queries: 1000,
-// };
+/// Large scale configuration for 10M vector testing.
+/// Run with: cargo test --test global_metrics global_metrics_large_scale --release -- --ignored --nocapture
+const LARGE_SCALE: TestScale = TestScale {
+    name: "Large (10M)",
+    vector_count: 10_000_000,
+    vector_dim: 256,
+    graph_nodes: 1_000_000,
+    graph_avg_degree: 10,
+    num_queries: 1000,
+};
 
 // =============================================================================
 // Metrics Collection
@@ -543,6 +544,20 @@ fn global_metrics_quick() {
 #[ignore] // Run with: cargo test --test global_metrics global_metrics_standard --release -- --ignored --nocapture
 fn global_metrics_standard() {
     run_metrics_suite(&STANDARD_SCALE);
+}
+
+/// Large scale test with 10M vectors.
+///
+/// Target performance: p95 < 5ms for k=100 search
+///
+/// Run with:
+/// ```bash
+/// cargo test -p neural-storage --test global_metrics global_metrics_large_scale --release -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore] // Run with: cargo test --test global_metrics global_metrics_large_scale --release -- --ignored --nocapture
+fn global_metrics_large_scale() {
+    run_metrics_suite(&LARGE_SCALE);
 }
 
 fn run_metrics_suite(scale: &TestScale) {

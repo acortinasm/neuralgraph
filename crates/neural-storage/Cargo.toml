@@ -53,6 +53,13 @@ tonic.workspace = true
 prost.workspace = true
 anyerror = "0.1"
 
+# Prometheus metrics export (Sprint 61)
+prometheus = { version = "0.13", optional = true }
+
+[features]
+default = []
+metrics = ["prometheus"]
+
 [build-dependencies]
 tonic-build = "0.12"
 

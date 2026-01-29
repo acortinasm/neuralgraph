@@ -14,7 +14,6 @@ pub type RaftNodeId = u64;
 /// Raft node information.
 pub type RaftNode = BasicNode;
 
-/// Declare the Raft type configuration using the openraft macro.
 openraft::declare_raft_types!(
     /// Type configuration for NeuralGraphDB Raft.
     pub TypeConfig:
