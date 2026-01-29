@@ -1,30 +1,58 @@
-# Benchmarks
-benchmark/
-benchmarks/ldbc/data/
-benches/
-benchmark/
-examples/
-flight_server.log
-http_server.log
-server.log
-proto/
-
-falkordb-data/
-neo4j-data/
-neuralgraph-cache/
-
-.claude/
-
-__pycache__
-
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
 # Rust
-/target
+/target/
 **/*.rs.bk
 *.pdb
 **/mutants.out*/
+
+# Logs
+*.log
+flight_server.log
+http_server.log
+server.log
+
+# IDE/Editor
 .idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Project specific
+benchmark/
+benchmarks/ldbc/data/
+benches/
+examples/
+proto/
 data/
+falkordb-data/
+neo4j-data/
+neuralgraph-cache/
 benchmark/neo4j_data/transactions
-benchmarks/ldbc/__pycache__/
+
+# Claude
+.claude/
+
+# Environment
+.env
+.env.local
+.env.*.local
