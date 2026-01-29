@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package vector;
+
+// The Vector service definition for distributed vector search.
+service VectorService {
+  // Search for k nearest neighbors to a query vector.
+  rpc Search(VectorSearchRequest) returns (VectorSearchResponse);
+
+  // Add a single vector to the index.
+  rpc Add(VectorAddRequest) returns (VectorAddResponse);
+
+  // Add multiple vectors in batch.
+  rpc BatchAdd(VectorBatchAddRequest) returns (VectorBatchAddResponse);
+
+  // Get index statistics.
+  rpc GetStats(VectorStatsRequest) returns (VectorStatsResponse);
+}
+
+// Request to search for nearest neighbors.
+message VectorSearchRequest {
+  // The query vector serialized as f32 array (little-endian bytes).
+  bytes query_vector = 1;
+  // Number of nearest neighbors to return.
+  uint32 k = 2;
+  // ef_search parameter for HNSW (optional, default is k*2 or 100).
+  uint32 ef_search = 3;
+  // Distance metric: "cosine", "euclidean", "dot_product".
+  string metric = 4;
+}
+
+// Response containing search results.
+message VectorSearchResponse {
+  // Search results ordered by similarity (highest first).
+  repeated VectorResult results = 1;
+  // Execution time in microseconds.
+  uint64 execution_time_us = 2;
+  // Number of vectors in the local index.
+  uint64 index_size = 3;
+}
+
+// A single vector search result.
+message VectorResult {
+  // Node ID of the result.
+  uint64 node_id = 1;
+  // Similarity score (higher is better for cosine/dot_product).
+  float score = 2;
+}
+
+// Request to add a vector.
+message VectorAddRequest {
+  // Node ID to associate with the vector.
+  uint64 node_id = 1;
+  // Vector data serialized as f32 array (little-endian bytes).
+  bytes vector = 2;
+}
+
+// Response to add request.
+message VectorAddResponse {
+  // Whether the add was successful.
+  bool success = 1;
+  // Error message if any.
+  string error = 2;
+}
+
+// Request to add vectors in batch.
+message VectorBatchAddRequest {
+  // List of vectors to add.
+  repeated VectorEntry entries = 1;
+}
+
+// A single vector entry for batch operations.
+message VectorEntry {
+  // Node ID to associate with the vector.
+  uint64 node_id = 1;
+  // Vector data serialized as f32 array (little-endian bytes).
+  bytes vector = 2;
+}
+
+// Response to batch add request.
+message VectorBatchAddResponse {
+  // Number of vectors successfully added.
+  uint32 added_count = 1;
+  // Number of vectors that failed to add.
+  uint32 failed_count = 2;
+  // Error messages for failed entries (node_id -> error).
+  map<uint64, string> errors = 3;
+}
+
+// Request for index statistics.
+message VectorStatsRequest {}
+
+// Response containing index statistics.
+message VectorStatsResponse {
+  // Number of vectors in the index.
+  uint64 vector_count = 1;
+  // Dimension of vectors.
+  uint32 dimension = 2;
+  // Memory used by vectors in bytes.
+  uint64 vector_memory_bytes = 3;
+  // Memory used by metadata in bytes.
+  uint64 metadata_memory_bytes = 4;
+  // Quantization method: "none", "int8", "binary".
+  string quantization = 5;
+  // Distance metric used.
+  string metric = 6;
+}

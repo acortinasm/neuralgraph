@@ -14,3 +14,4 @@ neuralgraph-cache/
 .DS_Store
 data/
 benchmark/neo4j_data/transactions
+benchmarks/ldbc/__pycache__/
