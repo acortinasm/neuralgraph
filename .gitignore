@@ -1,9 +1,22 @@
 # Benchmarks
 benchmark/
 benchmarks/ldbc/data/
+benches/
+benchmark/
+examples/
+flight_server.log
+http_server.log
+server.log
+proto/
+
 falkordb-data/
 neo4j-data/
 neuralgraph-cache/
+
+.claude/
+
+__pycache__
+
 
 # Rust
 /target

@@ -3,6 +3,7 @@ pub mod csc;
 pub mod csr;
 pub mod csv_loader;
 pub mod etl;
+pub mod full_text_index;
 pub mod graph_store;
 pub mod hf_loader;
 pub mod la;
@@ -40,6 +41,10 @@ pub use vector_index::{
 };
 pub use transaction::TransactionManager;
 pub use metrics::MetricsRegistry;
+pub use full_text_index::{
+    FullTextIndex, FullTextIndexConfig, FullTextIndexMetadata, FullTextError,
+    SearchResult as FullTextSearchResult, Language as FullTextLanguage,
+};
 // pub use persistence::Persistence; // Removed as it doesn't exist
 
 #[cfg(test)]

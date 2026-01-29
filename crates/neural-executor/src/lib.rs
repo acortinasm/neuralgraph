@@ -290,9 +290,10 @@ pub fn execute_statement_struct(
             }
         }
         Statement::Call(call) => {
-            // Handle procedure calls (Sprint 56)
-            match (call.namespace.as_str(), call.name.as_str()) {
-                ("neural", "search") => {
+            // Handle procedure calls (Sprint 56, 62)
+            let full_name = format!("{}.{}", call.namespace, call.name);
+            match full_name.as_str() {
+                "neural.search" => {
                     // CALL neural.search($vec, 'metric', k)
                     if call.args.len() != 3 {
                         return Err(ExecutionError::ExecutionError(
@@ -301,12 +302,150 @@ pub fn execute_statement_struct(
                     }
                     // For now, return placeholder - actual implementation would call VectorIndex
                     Ok(StatementResult::Call {
-                        procedure: format!("{}.{}", call.namespace, call.name),
+                        procedure: full_name,
                         result: "Vector search executed".to_string(),
                     })
                 }
+                "neural.fulltext.createIndex" => {
+                    // CALL neural.fulltext.createIndex('IndexName', 'Label', ['prop1', 'prop2'])
+                    if call.args.len() != 3 {
+                        return Err(ExecutionError::ExecutionError(
+                            "neural.fulltext.createIndex requires 3 arguments: name, label, properties".into()
+                        ));
+                    }
+
+                    // Extract index name
+                    let index_name = match &call.args[0] {
+                        neural_parser::Expression::Literal(neural_parser::Literal::String(s)) => s.clone(),
+                        _ => return Err(ExecutionError::ExecutionError(
+                            "Index name must be a string literal".into()
+                        )),
+                    };
+
+                    // Extract label
+                    let label = match &call.args[1] {
+                        neural_parser::Expression::Literal(neural_parser::Literal::String(s)) => s.clone(),
+                        _ => return Err(ExecutionError::ExecutionError(
+                            "Label must be a string literal".into()
+                        )),
+                    };
+
+                    // Extract properties list
+                    let properties = match &call.args[2] {
+                        neural_parser::Expression::List(items) => {
+                            items.iter().map(|expr| {
+                                match expr {
+                                    neural_parser::Expression::Literal(neural_parser::Literal::String(s)) => Ok(s.as_str()),
+                                    _ => Err(ExecutionError::ExecutionError(
+                                        "Properties must be a list of strings".into()
+                                    )),
+                                }
+                            }).collect::<Result<Vec<_>>>()?
+                        }
+                        _ => return Err(ExecutionError::ExecutionError(
+                            "Properties must be a list".into()
+                        )),
+                    };
+
+                    // Create the index
+                    match store.create_fulltext_index(&index_name, &label, properties) {
+                        Ok(()) => Ok(StatementResult::Call {
+                            procedure: full_name,
+                            result: format!("Created full-text index '{}' on :{}({:?})", index_name, label, store.fulltext_index_metadata(&index_name).map(|m| &m.properties)),
+                        }),
+                        Err(e) => Err(ExecutionError::ExecutionError(format!("Failed to create index: {}", e))),
+                    }
+                }
+                "neural.fulltext.query" => {
+                    // CALL neural.fulltext.query('IndexName', 'search terms', 10)
+                    if call.args.len() != 3 {
+                        return Err(ExecutionError::ExecutionError(
+                            "neural.fulltext.query requires 3 arguments: index_name, query, k".into()
+                        ));
+                    }
+
+                    // Extract index name
+                    let index_name = match &call.args[0] {
+                        neural_parser::Expression::Literal(neural_parser::Literal::String(s)) => s.clone(),
+                        _ => return Err(ExecutionError::ExecutionError(
+                            "Index name must be a string literal".into()
+                        )),
+                    };
+
+                    // Extract query string
+                    let query_str = match &call.args[1] {
+                        neural_parser::Expression::Literal(neural_parser::Literal::String(s)) => s.clone(),
+                        _ => return Err(ExecutionError::ExecutionError(
+                            "Query must be a string literal".into()
+                        )),
+                    };
+
+                    // Extract k (limit)
+                    let k = match &call.args[2] {
+                        neural_parser::Expression::Literal(neural_parser::Literal::Int(n)) => *n as usize,
+                        _ => return Err(ExecutionError::ExecutionError(
+                            "k must be an integer".into()
+                        )),
+                    };
+
+                    // Execute search
+                    match store.fulltext_search(&index_name, &query_str, k) {
+                        Ok(results) => {
+                            let result_str = results.iter()
+                                .map(|(node_id, score)| format!("  Node {}: {:.4}", node_id.as_u64(), score))
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            Ok(StatementResult::Call {
+                                procedure: full_name,
+                                result: format!("Found {} results:\n{}", results.len(), result_str),
+                            })
+                        }
+                        Err(e) => Err(ExecutionError::ExecutionError(format!("Search failed: {}", e))),
+                    }
+                }
+                "neural.fulltext.dropIndex" => {
+                    // CALL neural.fulltext.dropIndex('IndexName')
+                    if call.args.len() != 1 {
+                        return Err(ExecutionError::ExecutionError(
+                            "neural.fulltext.dropIndex requires 1 argument: index_name".into()
+                        ));
+                    }
+
+                    // Extract index name
+                    let index_name = match &call.args[0] {
+                        neural_parser::Expression::Literal(neural_parser::Literal::String(s)) => s.clone(),
+                        _ => return Err(ExecutionError::ExecutionError(
+                            "Index name must be a string literal".into()
+                        )),
+                    };
+
+                    // Drop the index
+                    match store.drop_fulltext_index(&index_name) {
+                        Ok(()) => Ok(StatementResult::Call {
+                            procedure: full_name,
+                            result: format!("Dropped full-text index '{}'", index_name),
+                        }),
+                        Err(e) => Err(ExecutionError::ExecutionError(format!("Failed to drop index: {}", e))),
+                    }
+                }
+                "neural.fulltext.indexes" => {
+                    // CALL neural.fulltext.indexes()
+                    let indexes = store.fulltext_indexes();
+                    let result_str = if indexes.is_empty() {
+                        "No full-text indexes".to_string()
+                    } else {
+                        indexes.iter()
+                            .map(|(name, label, props)| format!("  {} on :{}({:?})", name, label, props))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    };
+                    Ok(StatementResult::Call {
+                        procedure: full_name,
+                        result: format!("{} full-text index(es):\n{}", indexes.len(), result_str),
+                    })
+                }
                 _ => Err(ExecutionError::ExecutionError(
-                    format!("Unknown procedure: {}.{}", call.namespace, call.name)
+                    format!("Unknown procedure: {}", full_name)
                 )),
             }
         }

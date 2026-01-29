@@ -88,6 +88,11 @@ impl GraphStore {
         // Set the path of the database file
         self.path = Some(path.as_ref().to_path_buf());
 
+        // Commit all full-text indexes before saving (Sprint 62)
+        if let Err(e) = self.commit_fulltext_indexes() {
+            eprintln!("Warning: Failed to commit full-text indexes: {}", e);
+        }
+
         let file = File::create(&path)?;
         let mut writer = BufWriter::new(file);
 
@@ -129,6 +134,8 @@ impl GraphStore {
     /// You must rebuild it by calling `init_vector_index()` and `add_vector()`
     /// for each node if vector search is needed.
     ///
+    /// Full-text indexes are rebuilt automatically from stored metadata (Sprint 62).
+    ///
     /// # Example
     /// ```ignore
     /// let store = GraphStore::load_binary("graph.ngdb")?;
@@ -159,6 +166,11 @@ impl GraphStore {
         // and initialize the WAL writer, as these fields are skipped during serialization.
         store.path = Some(path.as_ref().to_path_buf());
         store.wal = Some(crate::wal::WalWriter::new(path.as_ref().with_extension("wal"))?);
+
+        // Rebuild full-text indexes from metadata (Sprint 62)
+        if let Err(e) = store.rebuild_fulltext_indexes() {
+            eprintln!("Warning: Failed to rebuild full-text indexes: {}", e);
+        }
 
         Ok(store)
     }

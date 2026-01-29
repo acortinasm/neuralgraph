@@ -56,6 +56,9 @@ anyerror = "0.1"
 # Prometheus metrics export (Sprint 61)
 prometheus = { version = "0.13", optional = true }
 
+# Full-text search (Sprint 62)
+tantivy = "0.22"
+
 [features]
 default = []
 metrics = ["prometheus"]

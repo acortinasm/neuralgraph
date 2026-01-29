@@ -5,6 +5,7 @@
 
 use crate::{CsrMatrix, CsrStats, VersionedPropertyStore, VectorIndex};
 use crate::csc::CscMatrix;
+use crate::full_text_index::{FullTextIndex, FullTextIndexConfig, FullTextIndexMetadata, FullTextError};
 use crate::wal::{LogEntry, TransactionId, WalWriter};
 use crate::transaction::TransactionManager;
 use neural_core::{Edge, Graph, Label, NodeId, PropertyValue};
@@ -514,6 +515,13 @@ pub struct GraphStore {
     /// Shard manager for distributed queries (Sprint 55)
     #[serde(skip)]
     shard_manager: Option<crate::sharding::ShardManager>,
+    /// Full-text indexes for text search (Sprint 62)
+    /// Skipped during serialization - tantivy manages its own files
+    #[serde(skip)]
+    full_text_indexes: HashMap<String, FullTextIndex>,
+    /// Metadata for full-text indexes (persisted for rebuild)
+    #[serde(default)]
+    full_text_metadata: HashMap<String, FullTextIndexMetadata>,
 }
 
 fn default_tx_counter() -> TransactionId {
@@ -550,6 +558,8 @@ impl GraphStore {
             current_tx_id: 1,
             timestamp_index: TimestampIndex::new(),
             shard_manager: None,
+            full_text_indexes: HashMap::new(),
+            full_text_metadata: HashMap::new(),
         }
     }
 
@@ -573,6 +583,8 @@ impl GraphStore {
             current_tx_id: 1,
             timestamp_index: TimestampIndex::new(),
             shard_manager: None,
+            full_text_indexes: HashMap::new(),
+            full_text_metadata: HashMap::new(),
         }
     }
 
@@ -599,6 +611,8 @@ impl GraphStore {
             current_tx_id: 1,
             timestamp_index: TimestampIndex::new(),
             shard_manager: None,
+            full_text_indexes: HashMap::new(),
+            full_text_metadata: HashMap::new(),
         };
 
         // Attempt to open WAL for recovery
@@ -1052,6 +1066,217 @@ impl GraphStore {
     /// Returns the dimension of vectors in the index, if initialized.
     pub fn vector_dimension(&self) -> Option<usize> {
         self.vector_index.as_ref().map(|idx| idx.dimension())
+    }
+
+    // =========================================================================
+    // Sprint 62: Full-Text Search
+    // =========================================================================
+
+    /// Creates a new full-text index on nodes with the specified label and properties.
+    ///
+    /// # Arguments
+    /// * `name` - Unique name for the index
+    /// * `label` - Node label to index
+    /// * `properties` - Properties to include in the index
+    ///
+    /// # Returns
+    /// Ok(()) on success, Err if index already exists or creation fails
+    ///
+    /// # Example
+    /// ```ignore
+    /// store.create_fulltext_index("paper_search", "Paper", vec!["title", "abstract"])?;
+    /// ```
+    pub fn create_fulltext_index(
+        &mut self,
+        name: &str,
+        label: &str,
+        properties: Vec<&str>,
+    ) -> Result<(), FullTextError> {
+        if self.full_text_indexes.contains_key(name) {
+            return Err(FullTextError::IndexExists(name.to_string()));
+        }
+
+        // Get base path for index storage
+        let base_path = self.path.clone().unwrap_or_else(|| PathBuf::from("."));
+
+        // Create config
+        let config = FullTextIndexConfig::new(name, label)
+            .with_properties(properties.iter().map(|s| s.to_string()).collect());
+
+        // Create the index
+        let mut ft_index = FullTextIndex::create(config.clone(), &base_path)?;
+
+        // Populate index with existing nodes
+        for node_id in self.nodes_with_label(label) {
+            let mut props = HashMap::new();
+            for prop in &properties {
+                if let Some(value) = self.get_property(node_id, prop) {
+                    if let Some(text) = value.as_str() {
+                        props.insert(prop.to_string(), text.to_string());
+                    }
+                }
+            }
+            if !props.is_empty() {
+                ft_index.add_document(node_id, &props)?;
+            }
+        }
+
+        ft_index.commit()?;
+
+        // Store metadata for persistence
+        self.full_text_metadata.insert(name.to_string(), ft_index.metadata().clone());
+        self.full_text_indexes.insert(name.to_string(), ft_index);
+
+        Ok(())
+    }
+
+    /// Searches a full-text index for matching documents.
+    ///
+    /// # Arguments
+    /// * `index_name` - Name of the index to search
+    /// * `query` - Search query (supports boolean syntax)
+    /// * `k` - Maximum number of results
+    ///
+    /// # Returns
+    /// Vector of (NodeId, score) pairs sorted by relevance
+    ///
+    /// # Query Syntax
+    /// - Simple terms: `machine learning`
+    /// - Phrase queries: `"neural networks"`
+    /// - Boolean: `deep AND learning NOT convolutional`
+    pub fn fulltext_search(
+        &self,
+        index_name: &str,
+        query: &str,
+        k: usize,
+    ) -> Result<Vec<(NodeId, f32)>, FullTextError> {
+        let index = self.full_text_indexes
+            .get(index_name)
+            .ok_or_else(|| FullTextError::IndexNotFound(index_name.to_string()))?;
+
+        let results = index.search(query, k)?;
+        Ok(results.into_iter().map(|r| (r.node_id, r.score)).collect())
+    }
+
+    /// Drops a full-text index.
+    ///
+    /// # Arguments
+    /// * `name` - Name of the index to drop
+    ///
+    /// # Returns
+    /// Ok(()) on success, Err if index doesn't exist
+    pub fn drop_fulltext_index(&mut self, name: &str) -> Result<(), FullTextError> {
+        if !self.full_text_indexes.contains_key(name) {
+            return Err(FullTextError::IndexNotFound(name.to_string()));
+        }
+
+        // Get the path before removing
+        let index_path = self.full_text_indexes.get(name).map(|idx| idx.path().to_path_buf());
+
+        // Remove from memory
+        self.full_text_indexes.remove(name);
+        self.full_text_metadata.remove(name);
+
+        // Try to remove the index directory
+        if let Some(path) = index_path {
+            let _ = std::fs::remove_dir_all(path);
+        }
+
+        Ok(())
+    }
+
+    /// Returns a list of all full-text indexes.
+    ///
+    /// # Returns
+    /// Vector of (name, label, properties) tuples
+    pub fn fulltext_indexes(&self) -> Vec<(&str, &str, &[String])> {
+        self.full_text_metadata
+            .values()
+            .map(|meta| (meta.name.as_str(), meta.label.as_str(), meta.properties.as_slice()))
+            .collect()
+    }
+
+    /// Returns metadata for a specific full-text index.
+    pub fn fulltext_index_metadata(&self, name: &str) -> Option<&FullTextIndexMetadata> {
+        self.full_text_metadata.get(name)
+    }
+
+    /// Rebuilds full-text indexes from metadata after loading from disk.
+    ///
+    /// This is called by load_binary() to restore indexes that were
+    /// not persisted (tantivy manages its own files).
+    pub fn rebuild_fulltext_indexes(&mut self) -> Result<(), FullTextError> {
+        let base_path = self.path.clone().unwrap_or_else(|| PathBuf::from("."));
+
+        // Clone metadata to avoid borrow issues
+        let metadata_list: Vec<_> = self.full_text_metadata.values().cloned().collect();
+
+        for metadata in metadata_list {
+            let index_path = base_path.join(".fts").join(&metadata.name);
+
+            // Try to open existing index
+            if index_path.exists() {
+                match FullTextIndex::open(&index_path, metadata.clone()) {
+                    Ok(index) => {
+                        self.full_text_indexes.insert(metadata.name.clone(), index);
+                    }
+                    Err(e) => {
+                        // Index corrupted or incompatible - rebuild from scratch
+                        eprintln!("Warning: Failed to open full-text index '{}': {}. Rebuilding...", metadata.name, e);
+                        self.rebuild_single_fulltext_index(&metadata, &base_path)?;
+                    }
+                }
+            } else {
+                // Index directory doesn't exist - rebuild
+                self.rebuild_single_fulltext_index(&metadata, &base_path)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Rebuilds a single full-text index from metadata.
+    fn rebuild_single_fulltext_index(
+        &mut self,
+        metadata: &FullTextIndexMetadata,
+        base_path: &Path,
+    ) -> Result<(), FullTextError> {
+        let config = FullTextIndexConfig::new(&metadata.name, &metadata.label)
+            .with_properties(metadata.properties.clone())
+            .with_analyzer(metadata.analyzer.clone());
+
+        let mut ft_index = FullTextIndex::create(config, base_path)?;
+
+        // Repopulate from graph data
+        for node_id in self.nodes_with_label(&metadata.label) {
+            let mut props = HashMap::new();
+            for prop in &metadata.properties {
+                if let Some(value) = self.get_property(node_id, prop) {
+                    if let Some(text) = value.as_str() {
+                        props.insert(prop.clone(), text.to_string());
+                    }
+                }
+            }
+            if !props.is_empty() {
+                ft_index.add_document(node_id, &props)?;
+            }
+        }
+
+        ft_index.commit()?;
+        self.full_text_indexes.insert(metadata.name.clone(), ft_index);
+
+        Ok(())
+    }
+
+    /// Commits all full-text indexes.
+    ///
+    /// This should be called before save_binary() to ensure all
+    /// pending changes are flushed to disk.
+    pub fn commit_fulltext_indexes(&mut self) -> Result<(), FullTextError> {
+        for index in self.full_text_indexes.values_mut() {
+            index.commit()?;
+        }
+        Ok(())
     }
 
     // =========================================================================
@@ -1873,6 +2098,8 @@ impl GraphStoreBuilder {
             current_tx_id: initial_tx_id + 1, // Next tx is 2
             timestamp_index: TimestampIndex::new(),
             shard_manager: None,
+            full_text_indexes: HashMap::new(),
+            full_text_metadata: HashMap::new(),
         }
     }
 }
@@ -2356,5 +2583,101 @@ mod tests {
 
         // Test error case
         assert!(store.get_tx_for_timestamp("2026-01-14T00:00:00Z").is_err());
+    }
+
+    // =========================================================================
+    // Sprint 62: Full-Text Index Tests
+    // =========================================================================
+
+    #[test]
+    fn test_fulltext_index_create_and_search() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let mut store = GraphStore::builder()
+            .add_labeled_node(0u64, "Paper", [
+                ("title", "Introduction to Machine Learning"),
+                ("abstract", "This paper covers ML basics"),
+            ])
+            .add_labeled_node(1u64, "Paper", [
+                ("title", "Deep Learning for NLP"),
+                ("abstract", "Neural networks for text processing"),
+            ])
+            .add_labeled_node(2u64, "Paper", [
+                ("title", "Graph Databases"),
+                ("abstract", "Storing and querying graph data"),
+            ])
+            .build();
+
+        // Set the path for index storage
+        store.path = Some(temp_dir.path().to_path_buf());
+
+        // Create full-text index
+        store.create_fulltext_index("paper_search", "Paper", vec!["title", "abstract"]).unwrap();
+
+        // Verify index was created
+        let indexes = store.fulltext_indexes();
+        assert_eq!(indexes.len(), 1);
+        assert_eq!(indexes[0].0, "paper_search");
+        assert_eq!(indexes[0].1, "Paper");
+
+        // Search for machine learning
+        let results = store.fulltext_search("paper_search", "machine learning", 10).unwrap();
+        assert!(!results.is_empty());
+        assert_eq!(results[0].0, NodeId::new(0));
+
+        // Search for graph
+        let results = store.fulltext_search("paper_search", "graph", 10).unwrap();
+        assert!(!results.is_empty());
+        assert_eq!(results[0].0, NodeId::new(2));
+    }
+
+    #[test]
+    fn test_fulltext_index_drop() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let mut store = GraphStore::builder()
+            .add_labeled_node(0u64, "Paper", [("title", "Test Paper")])
+            .build();
+
+        store.path = Some(temp_dir.path().to_path_buf());
+
+        // Create and verify
+        store.create_fulltext_index("test_idx", "Paper", vec!["title"]).unwrap();
+        assert_eq!(store.fulltext_indexes().len(), 1);
+
+        // Drop and verify
+        store.drop_fulltext_index("test_idx").unwrap();
+        assert_eq!(store.fulltext_indexes().len(), 0);
+
+        // Drop non-existent should fail
+        assert!(store.drop_fulltext_index("nonexistent").is_err());
+    }
+
+    #[test]
+    fn test_fulltext_index_error_on_duplicate() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let mut store = GraphStore::builder()
+            .add_labeled_node(0u64, "Paper", [("title", "Test")])
+            .build();
+
+        store.path = Some(temp_dir.path().to_path_buf());
+
+        // Create first index
+        store.create_fulltext_index("idx", "Paper", vec!["title"]).unwrap();
+
+        // Creating duplicate should fail
+        assert!(store.create_fulltext_index("idx", "Paper", vec!["title"]).is_err());
+    }
+
+    #[test]
+    fn test_fulltext_search_nonexistent_index() {
+        let store = GraphStore::new_in_memory();
+
+        // Search on nonexistent index should fail
+        assert!(store.fulltext_search("nonexistent", "query", 10).is_err());
     }
 }
