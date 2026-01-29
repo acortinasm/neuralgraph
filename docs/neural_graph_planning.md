@@ -10,8 +10,8 @@ Versión: 8.0
 > **Nota v8.0:** Reestructuración basada en análisis competitivo vs FalkorDB.
 > Prioriza features críticas para adopción de mercado (Full-Text, LangChain, LlamaIndex).
 
-> **Sprint 61 Completado:** Distributed Vector Search con scatter-gather, replica failover,
-> Prometheus metrics y gRPC server.
+> **Sprint 62 Completado:** Full-Text Search Index con tantivy. Soporta stemming, stop words,
+> phrase queries, boolean queries. CALL procedures: createIndex, query, dropIndex, indexes.
 
 ---
 
@@ -132,12 +132,12 @@ Demostrar rendimiento competitivo vs Neo4j/FalkorDB.
 * **US-20.1:** ✅ Como Sistema, quiero cuantización dinámica (Flash Quantization) f32→int8 para reducir memoria 4x.
 * **US-20.2:** ✅ Como Sistema, quiero búsqueda vectorial distribuida con fusión de resultados paralela. **Implementado: Scatter-gather, replica failover, Prometheus metrics, gRPC server.**
 
-#### **Épica 21: Full-Text Search** 📅 NUEVA (Análisis Competitivo)
+#### **Épica 21: Full-Text Search** 🔄 EN PROGRESO (Análisis Competitivo)
 
 Crítico para GraphRAG y paridad con FalkorDB (RediSearch).
 
-* **US-21.1:** 📅 Como Usuario, quiero crear índices full-text sobre propiedades de nodos.
-* **US-21.2:** 📅 Como Usuario, quiero búsqueda full-text con stemming y stopwords.
+* **US-21.1:** ✅ Como Usuario, quiero crear índices full-text sobre propiedades de nodos.
+* **US-21.2:** ✅ Como Usuario, quiero búsqueda full-text con stemming y stopwords.
 * **US-21.3:** 📅 Como Usuario, quiero fuzzy matching y búsqueda fonética.
 
 #### **Épica 22: Tipos de Datos Avanzados** 📅 NUEVA (Análisis Competitivo)
@@ -162,7 +162,7 @@ Expectativa de mercado. FalkorDB tiene integración nativa.
 | **Sprint 59** | **Query Latency Optimization** | Zero-copy bindings, direct serialization. **51% mejora** | ✅ | Perf |
 | **Sprint 60** | **Flash Quantization** | Cuantización f32→int8/binary, 4x-32x memoria. | ✅ | Perf |
 | **Sprint 61** | **Distributed Vector Search** | Scatter-gather + replica failover + Prometheus metrics + gRPC server. | ✅ | Perf |
-| **Sprint 62** | **Full-Text Index (Core)** | Índice invertido con tantivy. Stemming básico. | 📅 | **P0** |
+| **Sprint 62** | **Full-Text Index (Core)** | Índice invertido con tantivy. Stemming básico. | ✅ | **P0** |
 | **Sprint 63** | **Full-Text Search (Advanced)** | Fuzzy matching, phonetic search, multi-language. | 📅 | **P0** |
 | **Sprint 64** | **Array/Map Data Types** | Tipos nativos Array y Map/JSON en propiedades. | 📅 | **P0** |
 | **Sprint 65** | **LangChain Integration** | NeuralGraphStore, GraphCypherQAChain adapter. | 📅 | **P0** |

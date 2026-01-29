@@ -1,10 +1,10 @@
-# NeuralGraphDB v0.9.5 - Documentación Completa de Funcionalidades
+# NeuralGraphDB v0.9.6 - Documentación Completa de Funcionalidades
 
 > Base de datos de grafos nativa en Rust para cargas de trabajo de IA
 
-**Versión**: 0.9.5
+**Versión**: 0.9.6
 **Fecha**: 2026-01-29
-**Estado**: Fase 7 (Rendimiento y Escala) - Sprint 61
+**Estado**: Fase 7 (Paridad Competitiva y Escala) - Sprint 62
 
 ---
 
@@ -16,15 +16,16 @@
 4. [Lenguaje de Consulta NGQL](#4-lenguaje-de-consulta-ngql)
 5. [Motor de Almacenamiento](#5-motor-de-almacenamiento)
 6. [Índices y Búsqueda](#6-índices-y-búsqueda)
-7. [Motor Vectorial (HNSW)](#7-motor-vectorial-hnsw)
-8. [Transacciones y MVCC](#8-transacciones-y-mvcc)
-9. [Persistencia y Durabilidad](#9-persistencia-y-durabilidad)
-10. [Sistema Distribuido (Raft + Sharding)](#10-sistema-distribuido-raft--sharding)
-11. [GraphRAG y ETL](#11-graphrag-y-etl)
-12. [APIs e Interfaces](#12-apis-e-interfaces)
-13. [CLI y Comandos](#13-cli-y-comandos)
-14. [Rendimiento y Benchmarks](#14-rendimiento-y-benchmarks)
-15. [Historial de Sprints](#15-historial-de-sprints)
+7. [Búsqueda Full-Text](#7-búsqueda-full-text)
+8. [Motor Vectorial (HNSW)](#8-motor-vectorial-hnsw)
+9. [Transacciones y MVCC](#9-transacciones-y-mvcc)
+10. [Persistencia y Durabilidad](#10-persistencia-y-durabilidad)
+11. [Sistema Distribuido (Raft + Sharding)](#11-sistema-distribuido-raft--sharding)
+12. [GraphRAG y ETL](#12-graphrag-y-etl)
+13. [APIs e Interfaces](#13-apis-e-interfaces)
+14. [CLI y Comandos](#14-cli-y-comandos)
+15. [Rendimiento y Benchmarks](#15-rendimiento-y-benchmarks)
+16. [Historial de Sprints](#16-historial-de-sprints)
 
 ---
 
@@ -94,6 +95,11 @@ neuralgraph/
 │   │   │   ├── lsm_vec.rs        # LSM vector storage
 │   │   │   ├── pma.rs            # Packed Memory Arrays
 │   │   │   ├── metrics.rs        # Prometheus metrics
+│   │   │   │
+│   │   │   ├── full_text_index/  # Búsqueda full-text
+│   │   │   │   ├── mod.rs        # FullTextIndex, SearchResult
+│   │   │   │   ├── config.rs     # FullTextIndexConfig, Language
+│   │   │   │   └── schema.rs     # Analyzer, Schema builder
 │   │   │   │
 │   │   │   ├── vector_index/     # Motor vectorial
 │   │   │   │   ├── mod.rs        # Public exports
@@ -1092,7 +1098,139 @@ MATCH (n) AT TIME '2026-01-15T12:00:00Z' RETURN n
 
 ---
 
-## 7. Motor Vectorial (HNSW)
+## 7. Búsqueda Full-Text
+
+### 7.1 Arquitectura
+
+NeuralGraphDB incluye búsqueda full-text nativa usando **tantivy** (el equivalente a Lucene en Rust). Esto permite buscar texto en propiedades de nodos con ranking de relevancia.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       FullTextIndex                              │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────────┐  ┌──────────────────────┐ │
+│  │ Tantivy     │  │  Schema with    │  │  Node ID Mapping     │ │
+│  │ Index       │  │  Text Fields    │  │  (u64 -> NodeId)     │ │
+│  └─────────────┘  └─────────────────┘  └──────────────────────┘ │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                    Text Analyzer                          │   │
+│  │  SimpleTokenizer → LowerCaser → StopWords → Stemmer      │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 7.2 Características
+
+| Característica | Descripción |
+|----------------|-------------|
+| **Stemming** | Reduce palabras a su raíz (e.g., "learning" → "learn") |
+| **Stop Words** | Filtra palabras comunes (the, a, is, etc.) |
+| **Phrase Queries** | Búsqueda exacta de frases con comillas |
+| **Boolean Queries** | Combinar términos con AND, OR, NOT |
+| **Relevance Ranking** | Ordenamiento por score BM25 |
+| **Persistence** | Índices persistentes en directorio `.fts/` |
+
+### 7.3 Procedimientos CALL
+
+#### Crear Índice Full-Text
+
+```cypher
+-- Crear índice sobre una o más propiedades
+CALL neural.fulltext.createIndex('paper_search', 'Paper', ['title', 'abstract'])
+
+-- Resultado:
+-- | result |
+-- | "Created full-text index 'paper_search' on :Paper(['title', 'abstract'])" |
+```
+
+#### Buscar en el Índice
+
+```cypher
+-- Búsqueda simple
+CALL neural.fulltext.query('paper_search', 'machine learning', 10)
+YIELD node, score
+RETURN node.title, score
+ORDER BY score DESC
+
+-- Búsqueda con frase exacta
+CALL neural.fulltext.query('paper_search', '"neural networks"', 5)
+YIELD node, score
+RETURN node.title, score
+
+-- Búsqueda booleana
+CALL neural.fulltext.query('paper_search', 'deep AND learning NOT convolutional', 10)
+YIELD node, score
+RETURN node.title, score
+```
+
+#### Listar Índices
+
+```cypher
+-- Ver todos los índices full-text
+CALL neural.fulltext.indexes()
+
+-- Resultado:
+-- | name | label | properties | document_count |
+-- | "paper_search" | "Paper" | ["title", "abstract"] | 1500 |
+```
+
+#### Eliminar Índice
+
+```cypher
+-- Eliminar un índice
+CALL neural.fulltext.dropIndex('paper_search')
+
+-- Resultado:
+-- | result |
+-- | "Dropped full-text index 'paper_search'" |
+```
+
+### 7.4 Sintaxis de Búsqueda
+
+| Tipo | Sintaxis | Ejemplo | Descripción |
+|------|----------|---------|-------------|
+| **Términos simples** | `term1 term2` | `machine learning` | Busca documentos con cualquier término |
+| **Frase exacta** | `"term1 term2"` | `"neural network"` | Busca secuencia exacta |
+| **AND** | `term1 AND term2` | `deep AND learning` | Ambos términos requeridos |
+| **OR** | `term1 OR term2` | `CNN OR RNN` | Cualquier término |
+| **NOT** | `-term` o `NOT term` | `learning -deep` | Excluir término |
+| **Campo específico** | `field:term` | `title:introduction` | Buscar en campo específico |
+
+### 7.5 Configuración del Analizador
+
+```rust
+pub struct AnalyzerConfig {
+    /// Idioma para stemming (default: English)
+    pub language: Language,
+    /// Lista de stop words personalizados
+    pub stop_words: Vec<String>,
+    /// Convertir a minúsculas (default: true)
+    pub lowercase: bool,
+}
+
+// Idiomas soportados
+pub enum Language {
+    English,   // Porter Stemmer
+    Spanish,   // Snowball Spanish
+    French,    // Snowball French
+    German,    // Snowball German
+    // ... y más
+}
+```
+
+### 7.6 Casos de Uso
+
+| Caso de Uso | Descripción | Query Ejemplo |
+|-------------|-------------|---------------|
+| **GraphRAG** | Buscar documentos relevantes para contexto LLM | `neural.fulltext.query('docs', $user_query, 5)` |
+| **Knowledge Base** | Buscar en base de conocimiento | `neural.fulltext.query('kb', 'error authentication', 10)` |
+| **Research Papers** | Buscar papers académicos | `neural.fulltext.query('papers', '"transformer architecture"', 20)` |
+| **Log Analysis** | Buscar en logs de errores | `neural.fulltext.query('logs', 'error AND timeout', 100)` |
+
+---
+
+## 8. Motor Vectorial (HNSW)
 
 ### 7.1 Configuración del Índice
 
@@ -1326,7 +1464,7 @@ impl VectorIndex {
 
 ---
 
-## 8. Transacciones y MVCC
+## 9. Transacciones y MVCC
 
 ### 8.1 Transaction Manager
 
@@ -1408,7 +1546,7 @@ impl GraphStore {
 
 ---
 
-## 9. Persistencia y Durabilidad
+## 10. Persistencia y Durabilidad
 
 ### 9.1 Formato Binario (.ngdb)
 
@@ -1489,7 +1627,7 @@ impl GraphStore {
 
 ---
 
-## 10. Sistema Distribuido (Raft + Sharding)
+## 11. Sistema Distribuido (Raft + Sharding)
 
 ### 10.1 Raft Consensus
 
@@ -1697,7 +1835,7 @@ message VectorSearchResponse {
 
 ---
 
-## 11. GraphRAG y ETL
+## 12. GraphRAG y ETL
 
 ### 11.1 Pipeline ETL
 
@@ -1810,7 +1948,7 @@ ORDER BY size DESC
 
 ---
 
-## 12. APIs e Interfaces
+## 13. APIs e Interfaces
 
 ### 12.1 HTTP REST API (Axum)
 
@@ -1905,7 +2043,7 @@ df = table.to_pandas()
 
 ---
 
-## 13. CLI y Comandos
+## 14. CLI y Comandos
 
 ### 13.1 Modos de Ejecución
 
@@ -2002,7 +2140,7 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 
 ---
 
-## 14. Rendimiento y Benchmarks
+## 15. Rendimiento y Benchmarks
 
 ### 14.1 Métricas de Rendimiento Verificadas
 
@@ -2065,7 +2203,7 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 
 ---
 
-## 15. Historial de Sprints
+## 16. Historial de Sprints
 
 | Sprint | Versión | Funcionalidades |
 |--------|---------|-----------------|
@@ -2096,6 +2234,7 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 | 59 | 0.9.5 | Query latency optimization (51% improvement) |
 | 60 | 0.9.5 | Flash quantization (4-32x memory), distributed vector search |
 | 61 | 0.9.5 | Distributed vector gRPC server, shard coordinator enhancements |
+| 62 | 0.9.6 | Full-text search index (tantivy): stemming, stop words, phrase/boolean queries |
 
 ---
 
@@ -2148,4 +2287,4 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 
 *Documento generado: 2026-01-29*
 *Versión de NeuralGraphDB: 0.9.5*
-*Sprints completados: 1-61*
+*Sprints completados: 1-62*

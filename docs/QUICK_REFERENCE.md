@@ -1,4 +1,4 @@
-# NeuralGraphDB Quick Reference (v0.9.5)
+# NeuralGraphDB Quick Reference (v0.9.6)
 
 ## Shell Commands
 
@@ -80,6 +80,30 @@ COMMIT
 BEGIN
   -- changes...
 ROLLBACK   -- Undo all changes
+```
+
+---
+
+## Full-Text Search
+
+```cypher
+-- Create index on properties
+CALL neural.fulltext.createIndex('search_idx', 'Paper', ['title', 'abstract'])
+
+-- Search with relevance ranking
+CALL neural.fulltext.query('search_idx', 'machine learning', 10)
+YIELD node, score
+RETURN node.title, score
+
+-- Phrase search
+CALL neural.fulltext.query('search_idx', '"neural network"', 5)
+
+-- Boolean search (AND, OR, NOT/-)
+CALL neural.fulltext.query('search_idx', 'deep AND learning -CNN', 10)
+
+-- List/drop indexes
+CALL neural.fulltext.indexes()
+CALL neural.fulltext.dropIndex('search_idx')
 ```
 
 ---

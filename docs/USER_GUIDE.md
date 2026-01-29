@@ -15,11 +15,12 @@
 4. [Query Language (NGQL)](#4-query-language-ngql)
 5. [Working with Data](#5-working-with-data)
 6. [Transactions](#6-transactions)
-7. [Vector Search](#7-vector-search)
-8. [Graph Analytics](#8-graph-analytics)
-9. [APIs & Integrations](#9-apis--integrations)
-10. [Administration](#10-administration)
-11. [Best Practices](#11-best-practices)
+7. [Full-Text Search](#7-full-text-search)
+8. [Vector Search](#8-vector-search)
+9. [Graph Analytics](#9-graph-analytics)
+10. [APIs & Integrations](#10-apis--integrations)
+11. [Administration](#11-administration)
+12. [Best Practices](#12-best-practices)
 
 ---
 
@@ -441,7 +442,84 @@ ROLLBACK
 
 ---
 
-## 7. Vector Search
+## 7. Full-Text Search
+
+Full-text search lets you find nodes by searching text in their properties. It uses relevance ranking to return the most relevant results first.
+
+### Creating a Full-Text Index
+
+Before searching, create an index on the properties you want to search:
+
+```cypher
+-- Create an index named 'paper_search' on Paper nodes
+-- Index the 'title' and 'abstract' properties
+CALL neural.fulltext.createIndex('paper_search', 'Paper', ['title', 'abstract'])
+```
+
+### Searching
+
+```cypher
+-- Simple search
+CALL neural.fulltext.query('paper_search', 'machine learning', 10)
+YIELD node, score
+RETURN node.title, score
+
+-- Results are ordered by relevance (higher score = more relevant)
+```
+
+### Search Query Syntax
+
+| Syntax | Example | Description |
+|--------|---------|-------------|
+| Simple terms | `machine learning` | Match any term |
+| Phrase | `"neural network"` | Match exact phrase |
+| AND | `deep AND learning` | Both terms required |
+| NOT | `learning -deep` | Exclude term |
+| Field | `title:introduction` | Search specific field |
+
+```cypher
+-- Phrase search (exact match)
+CALL neural.fulltext.query('paper_search', '"transformer architecture"', 5)
+YIELD node, score
+RETURN node.title
+
+-- Boolean search
+CALL neural.fulltext.query('paper_search', 'deep AND learning NOT CNN', 10)
+YIELD node, score
+RETURN node.title
+```
+
+### Features
+
+- **Stemming**: "learning", "learns", "learned" all match "learn"
+- **Stop words**: Common words like "the", "a", "is" are ignored
+- **Relevance ranking**: Results sorted by BM25 score
+- **Multiple properties**: Search across title, abstract, content simultaneously
+
+### Managing Indexes
+
+```cypher
+-- List all full-text indexes
+CALL neural.fulltext.indexes()
+
+-- Drop an index
+CALL neural.fulltext.dropIndex('paper_search')
+```
+
+### Combining with Graph Queries
+
+```cypher
+-- Find relevant papers, then get their authors
+CALL neural.fulltext.query('paper_search', 'graph neural networks', 10)
+YIELD node, score
+MATCH (node)-[:AUTHORED_BY]->(author:Person)
+RETURN node.title, author.name, score
+ORDER BY score DESC
+```
+
+---
+
+## 8. Vector Search
 
 Vector search lets you find similar items using AI embeddings.
 
@@ -510,7 +588,7 @@ The distributed search is transparent - you use the same `neural.search()` API w
 
 ---
 
-## 8. Graph Analytics
+## 9. Graph Analytics
 
 ### Community Detection
 
@@ -552,7 +630,7 @@ LIMIT 10
 
 ---
 
-## 9. APIs & Integrations
+## 10. APIs & Integrations
 
 ### REST API
 
@@ -610,7 +688,7 @@ neuralgraph serve-flight 50051
 
 ---
 
-## 10. Administration
+## 11. Administration
 
 ### Server Modes
 
@@ -700,7 +778,7 @@ NeuralGraphDB exposes metrics for monitoring cluster and vector search performan
 
 ---
 
-## 11. Best Practices
+## 12. Best Practices
 
 ### Data Modeling
 
