@@ -15,6 +15,9 @@ service VectorService {
 
   // Get index statistics.
   rpc GetStats(VectorStatsRequest) returns (VectorStatsResponse);
+
+  // Health check for shard availability.
+  rpc HealthCheck(VectorHealthCheckRequest) returns (VectorHealthCheckResponse);
 }
 
 // Request to search for nearest neighbors.
@@ -104,4 +107,20 @@ message VectorStatsResponse {
   string quantization = 5;
   // Distance metric used.
   string metric = 6;
+}
+
+// Request for health check.
+message VectorHealthCheckRequest {
+  // Shard ID to check health for.
+  uint32 shard_id = 1;
+}
+
+// Response for health check.
+message VectorHealthCheckResponse {
+  // Whether the shard is healthy and ready to serve requests.
+  bool healthy = 1;
+  // Number of vectors in the index.
+  uint64 vector_count = 2;
+  // Status string: "ready", "loading", "error".
+  string status = 3;
 }

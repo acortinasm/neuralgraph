@@ -272,6 +272,43 @@ impl VectorClientPool {
         client.search(query, k).await
     }
 
+    /// Searches at a specific replica address.
+    ///
+    /// Creates a new connection to the specified address if one doesn't exist.
+    /// Used for replica failover when the primary is unavailable.
+    ///
+    /// # Arguments
+    ///
+    /// * `shard_id` - The shard ID (for context)
+    /// * `addr` - The replica address to connect to
+    /// * `query` - The query vector
+    /// * `k` - Number of neighbors to return
+    pub async fn search_at_addr(
+        &self,
+        shard_id: ShardId,
+        addr: &str,
+        query: &[f32],
+        k: usize,
+    ) -> Result<Vec<(NodeId, f32)>, VectorClientError> {
+        // Check if we have this address registered for this shard
+        let is_registered = self
+            .addresses
+            .get(&shard_id)
+            .map(|a| a.value() == addr)
+            .unwrap_or(false);
+
+        if !is_registered {
+            // This is a different address (replica), create a direct connection
+            let mut client = VectorShardClient::connect(shard_id, addr, self.timeout)
+                .await?
+                .with_metric(self.metric);
+            return client.search(query, k).await;
+        }
+
+        // Use existing connection pool
+        self.search(shard_id, query, k).await
+    }
+
     /// Returns the number of connected clients.
     pub fn connected_count(&self) -> usize {
         self.clients.len()

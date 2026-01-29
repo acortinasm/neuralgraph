@@ -8,6 +8,7 @@ pub mod hf_loader;
 pub mod la;
 pub mod lsm_vec;
 pub mod llm;
+pub mod metrics;
 pub mod mvcc;
 pub mod pdf;
 pub mod persistence;
@@ -38,6 +39,7 @@ pub use vector_index::{
     LoadBalancer, RoundRobinBalancer, LatencyAwareBalancer, WeightedBalancer,
 };
 pub use transaction::TransactionManager;
+pub use metrics::MetricsRegistry;
 // pub use persistence::Persistence; // Removed as it doesn't exist
 
 #[cfg(test)]

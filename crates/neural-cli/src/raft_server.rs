@@ -38,6 +38,7 @@ pub struct RaftGrpcServer {
 
 impl RaftGrpcServer {
     /// Creates a new Raft gRPC server.
+    #[allow(dead_code)]
     pub fn new(raft: Raft<TypeConfig>) -> Self {
         Self { raft, cluster: None }
     }

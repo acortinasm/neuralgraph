@@ -5,7 +5,6 @@
 use super::manager::{ShardInfo, ShardManager};
 use super::router::{QueryPlan, ShardRouter};
 use super::strategy::ShardId;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Result from a single shard query.

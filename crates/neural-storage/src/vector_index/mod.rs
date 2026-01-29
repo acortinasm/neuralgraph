@@ -32,6 +32,7 @@ mod cache;
 mod client;
 mod distributed;
 mod load_balancer;
+mod server;
 
 // Re-export core types
 pub use core::{
@@ -72,3 +73,7 @@ pub use load_balancer::{
     LatencyAwareBalancer,
     WeightedBalancer,
 };
+
+// Re-export gRPC server types (Sprint 61)
+pub use server::VectorGrpcServer;
+pub use server::proto::vector_service_server::VectorServiceServer;

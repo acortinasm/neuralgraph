@@ -318,36 +318,83 @@ impl DistributedVectorIndex {
         }
     }
 
-    /// Search a remote shard.
+    /// Search a remote shard with replica failover.
+    ///
+    /// Attempts to search the primary replica first, then falls back to
+    /// other replicas on failure. Uses exponential backoff between retries.
     async fn search_remote(
         &self,
         shard_id: ShardId,
         query: &[f32],
         k: usize,
     ) -> ShardSearchResult {
-        // Apply timeout
+        let info = match self.shard_manager.get_shard(shard_id) {
+            Some(info) => info.clone(),
+            None => {
+                return Err(VectorClientError::ServerError(format!(
+                    "Shard {} not found",
+                    shard_id
+                )));
+            }
+        };
+
+        // Build replica list: primary + replicas
+        let mut replicas = vec![info.primary_addr.clone()];
+        replicas.extend(info.replica_addrs.iter().cloned());
+
+        let mut last_error = None;
+        let mut backoff = Duration::from_millis(10);
+        const MAX_RETRIES: usize = 3;
+
+        for attempt in 0..MAX_RETRIES {
+            // Select replica using load balancer
+            let selected = self.load_balancer.select_replica(shard_id, &replicas);
+
+            match self.try_search_replica(shard_id, &selected, query, k).await {
+                Ok(results) => {
+                    // Mark as healthy on success
+                    self.load_balancer.mark_healthy(shard_id, &selected);
+                    return Ok(results);
+                }
+                Err(e) => {
+                    // Mark as unhealthy and retry
+                    self.load_balancer.mark_unhealthy(shard_id, &selected);
+                    tracing_error(shard_id, &e);
+                    last_error = Some(e);
+
+                    if attempt < MAX_RETRIES - 1 {
+                        tokio::time::sleep(backoff).await;
+                        backoff *= 2; // Exponential backoff
+                    }
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            VectorClientError::ServerError("All replicas failed".to_string())
+        }))
+    }
+
+    /// Attempt to search a specific replica address.
+    async fn try_search_replica(
+        &self,
+        shard_id: ShardId,
+        addr: &str,
+        query: &[f32],
+        k: usize,
+    ) -> ShardSearchResult {
         let timeout = self.config.timeout;
 
-        match tokio::time::timeout(timeout, self.client_pool.search(shard_id, query, k)).await {
-            Ok(result) => {
-                if let Err(ref e) = result {
-                    // Mark shard as unhealthy on error
-                    if let Some(info) = self.shard_manager.get_shard(shard_id) {
-                        self.load_balancer.mark_unhealthy(shard_id, &info.primary_addr);
-                    }
-                    tracing_error(shard_id, e);
-                }
-                result
-            }
-            Err(_) => {
-                // Timeout
-                if let Some(info) = self.shard_manager.get_shard(shard_id) {
-                    self.load_balancer.mark_unhealthy(shard_id, &info.primary_addr);
-                }
-                Err(VectorClientError::Timeout {
-                    timeout_ms: timeout.as_millis() as u64,
-                })
-            }
+        match tokio::time::timeout(
+            timeout,
+            self.client_pool.search_at_addr(shard_id, addr, query, k),
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => Err(VectorClientError::Timeout {
+                timeout_ms: timeout.as_millis() as u64,
+            }),
         }
     }
 
