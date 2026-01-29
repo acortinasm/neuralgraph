@@ -634,13 +634,32 @@ Memory: 256 MB
 
 ### Cluster Management
 
+NeuralGraphDB supports distributed deployment with automatic leader election and request routing.
+
 ```bash
+# Start a Raft cluster node
+neuralgraph serve-raft 1 50052              # Bootstrap node
+neuralgraph serve-raft 2 50053 --join localhost:50052  # Join existing cluster
+
 # Check cluster health
 neuralgraph cluster health localhost:50052
 
-# View cluster info
+# View cluster info (shows leader, members, term)
 neuralgraph cluster info localhost:50052
+
+# Add a new node to the cluster
+neuralgraph cluster add localhost:50052 3 localhost:50054
+
+# Remove a node from the cluster
+neuralgraph cluster remove localhost:50052 3
 ```
+
+**Cluster-Aware Writes:**
+
+When connected to a cluster, writes are automatically routed to the current leader:
+- If you send a write to a follower, it redirects to the leader
+- Reads can be served by any node
+- Leader election is automatic if the leader fails
 
 ---
 

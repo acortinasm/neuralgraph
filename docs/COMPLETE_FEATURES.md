@@ -3,8 +3,8 @@
 > Base de datos de grafos nativa en Rust para cargas de trabajo de IA
 
 **Versión**: 0.9.5
-**Fecha**: 2026-01-28
-**Estado**: Fase 7 (Rendimiento y Escala) - Sprint 60
+**Fecha**: 2026-01-29
+**Estado**: Fase 7 (Rendimiento y Escala) - Sprint 61
 
 ---
 
@@ -1539,6 +1539,32 @@ service Raft {
     rpc Join(JoinRequest) returns (JoinResponse);
     rpc GetClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse);
     rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+    // Client mutations (Sprint 53)
+    rpc ClientRequest(ClientRequestMessage) returns (ClientResponseMessage);
+}
+```
+
+**ClusterAwareClient (Sprint 53):**
+
+El cliente cluster-aware enruta automáticamente las mutaciones al líder Raft:
+
+```rust
+pub struct ClusterAwareClient {
+    cluster: Arc<ClusterManager>,
+    clients: Arc<RwLock<BTreeMap<u64, RaftClient>>>,
+    max_retries: usize,
+}
+
+impl ClusterAwareClient {
+    /// Submit mutation to the Raft leader
+    pub async fn submit(&self, request: &RaftRequest) -> Result<RaftResponse, ClientError>;
+
+    /// Get cluster information
+    pub async fn get_cluster_info(&self) -> Result<ClusterInfoResponse, ClientError>;
+
+    /// Check health of a specific node
+    pub async fn health_check(&self, node_id: u64, addr: &str) -> Result<HealthCheckResponse, ClientError>;
 }
 ```
 
@@ -2060,7 +2086,8 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 | 32-49 | 0.9.0 | Query pipelining, MERGE, CASE, temporal engine |
 | 50 | 0.9.2 | Transaction Manager (ACID) |
 | 51 | 0.9.1 | type() function, keyword flexibility |
-| 52+ | 0.9.2 | Raft Consensus |
+| 52 | 0.9.2 | Raft Consensus (multi-node replication) |
+| 53 | 0.9.5 | Cluster Management (leader routing, health checks, metrics) |
 | 54 | 0.9.2 | Time-Travel (AT TIME, FLASHBACK) |
 | 55 | 0.9.2 | Shard hints |
 | 56 | 0.9.2 | Embedding metadata |
@@ -2068,6 +2095,7 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 | 58+ | 0.9.2 | Graph sharding |
 | 59 | 0.9.5 | Query latency optimization (51% improvement) |
 | 60 | 0.9.5 | Flash quantization (4-32x memory), distributed vector search |
+| 61 | 0.9.5 | Distributed vector gRPC server, shard coordinator enhancements |
 
 ---
 
@@ -2118,6 +2146,6 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 
 ---
 
-*Documento generado: 2026-01-28*
+*Documento generado: 2026-01-29*
 *Versión de NeuralGraphDB: 0.9.5*
-*Sprints completados: 1-60*
+*Sprints completados: 1-61*
