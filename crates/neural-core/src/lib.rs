@@ -9,6 +9,7 @@
 //! - [`Graph`] - Core trait for graph implementations
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 use thiserror::Error;
 
@@ -144,7 +145,7 @@ impl From<String> for Label {
 ///
 /// Supports the types defined in the NGQL specification:
 /// - Primitives: Bool, Int, Float, String
-/// - Complex: Vector (for embeddings)
+/// - Complex: Vector (for embeddings), Array, Map
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum PropertyValue {
     /// Null/missing value
@@ -164,6 +165,10 @@ pub enum PropertyValue {
     DateTime(String),
     /// Vector of f32 (for embeddings)
     Vector(Vec<f32>),
+    /// Array of property values (heterogeneous list)
+    Array(Vec<PropertyValue>),
+    /// Map/JSON object (key-value pairs)
+    Map(HashMap<String, PropertyValue>),
 }
 
 impl PropertyValue {
@@ -210,6 +215,66 @@ impl PropertyValue {
     pub fn as_vector(&self) -> Option<&[f32]> {
         match self {
             PropertyValue::Vector(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// Returns true if the value is an array.
+    #[inline]
+    pub fn is_array(&self) -> bool {
+        matches!(self, PropertyValue::Array(_))
+    }
+
+    /// Attempts to get the value as an array slice.
+    pub fn as_array(&self) -> Option<&[PropertyValue]> {
+        match self {
+            PropertyValue::Array(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Attempts to get mutable access to the array.
+    pub fn as_array_mut(&mut self) -> Option<&mut Vec<PropertyValue>> {
+        match self {
+            PropertyValue::Array(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Returns true if the value is a map.
+    #[inline]
+    pub fn is_map(&self) -> bool {
+        matches!(self, PropertyValue::Map(_))
+    }
+
+    /// Attempts to get the value as a map.
+    pub fn as_map(&self) -> Option<&HashMap<String, PropertyValue>> {
+        match self {
+            PropertyValue::Map(m) => Some(m),
+            _ => None,
+        }
+    }
+
+    /// Attempts to get mutable access to the map.
+    pub fn as_map_mut(&mut self) -> Option<&mut HashMap<String, PropertyValue>> {
+        match self {
+            PropertyValue::Map(m) => Some(m),
+            _ => None,
+        }
+    }
+
+    /// Gets a value from a map by key.
+    pub fn get(&self, key: &str) -> Option<&PropertyValue> {
+        match self {
+            PropertyValue::Map(m) => m.get(key),
+            _ => None,
+        }
+    }
+
+    /// Gets a value from an array by index.
+    pub fn get_index(&self, index: usize) -> Option<&PropertyValue> {
+        match self {
+            PropertyValue::Array(a) => a.get(index),
             _ => None,
         }
     }
@@ -261,6 +326,18 @@ impl From<&str> for PropertyValue {
 impl From<Vec<f32>> for PropertyValue {
     fn from(v: Vec<f32>) -> Self {
         PropertyValue::Vector(v)
+    }
+}
+
+impl From<Vec<PropertyValue>> for PropertyValue {
+    fn from(v: Vec<PropertyValue>) -> Self {
+        PropertyValue::Array(v)
+    }
+}
+
+impl From<HashMap<String, PropertyValue>> for PropertyValue {
+    fn from(m: HashMap<String, PropertyValue>) -> Self {
+        PropertyValue::Map(m)
     }
 }
 
@@ -576,5 +653,130 @@ mod tests {
         let labeled_edge = Edge::with_label(0u64, 1u64, "KNOWS");
         assert!(labeled_edge.label.is_some());
         assert_eq!(labeled_edge.label.unwrap().as_str(), "KNOWS");
+    }
+
+    #[test]
+    fn test_property_value_array() {
+        // Create an array with mixed types
+        let arr = PropertyValue::Array(vec![
+            PropertyValue::Int(1),
+            PropertyValue::String("two".to_string()),
+            PropertyValue::Bool(true),
+        ]);
+
+        assert!(arr.is_array());
+        assert!(!arr.is_map());
+        assert!(!arr.is_null());
+
+        let items = arr.as_array().unwrap();
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0].as_int(), Some(1));
+        assert_eq!(items[1].as_str(), Some("two"));
+        assert_eq!(items[2].as_bool(), Some(true));
+
+        // Test get_index
+        assert_eq!(arr.get_index(0).unwrap().as_int(), Some(1));
+        assert!(arr.get_index(10).is_none());
+
+        // Test From implementation
+        let arr2: PropertyValue = vec![PropertyValue::Int(42)].into();
+        assert!(arr2.is_array());
+    }
+
+    #[test]
+    fn test_property_value_map() {
+        use std::collections::HashMap;
+
+        let mut map = HashMap::new();
+        map.insert("name".to_string(), PropertyValue::String("Alice".to_string()));
+        map.insert("age".to_string(), PropertyValue::Int(30));
+        map.insert("active".to_string(), PropertyValue::Bool(true));
+
+        let map_val = PropertyValue::Map(map);
+
+        assert!(map_val.is_map());
+        assert!(!map_val.is_array());
+        assert!(!map_val.is_null());
+
+        let m = map_val.as_map().unwrap();
+        assert_eq!(m.len(), 3);
+        assert_eq!(m.get("name").unwrap().as_str(), Some("Alice"));
+        assert_eq!(m.get("age").unwrap().as_int(), Some(30));
+
+        // Test get helper
+        assert_eq!(map_val.get("name").unwrap().as_str(), Some("Alice"));
+        assert!(map_val.get("nonexistent").is_none());
+
+        // Test From implementation
+        let mut m2 = HashMap::new();
+        m2.insert("key".to_string(), PropertyValue::Int(1));
+        let map_val2: PropertyValue = m2.into();
+        assert!(map_val2.is_map());
+    }
+
+    #[test]
+    fn test_property_value_nested() {
+        use std::collections::HashMap;
+
+        // Nested array in map
+        let mut map = HashMap::new();
+        map.insert("tags".to_string(), PropertyValue::Array(vec![
+            PropertyValue::String("rust".to_string()),
+            PropertyValue::String("graph".to_string()),
+        ]));
+        map.insert("count".to_string(), PropertyValue::Int(2));
+
+        let map_val = PropertyValue::Map(map);
+
+        let tags = map_val.get("tags").unwrap().as_array().unwrap();
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].as_str(), Some("rust"));
+
+        // Nested map in array
+        let mut inner_map = HashMap::new();
+        inner_map.insert("x".to_string(), PropertyValue::Int(1));
+        inner_map.insert("y".to_string(), PropertyValue::Int(2));
+
+        let arr = PropertyValue::Array(vec![
+            PropertyValue::Map(inner_map),
+            PropertyValue::String("point".to_string()),
+        ]);
+
+        let first = arr.get_index(0).unwrap().as_map().unwrap();
+        assert_eq!(first.get("x").unwrap().as_int(), Some(1));
+    }
+
+    #[test]
+    fn test_property_value_array_map_serialization() {
+        use std::collections::HashMap;
+
+        // Array serialization
+        let arr = PropertyValue::Array(vec![
+            PropertyValue::Int(1),
+            PropertyValue::Int(2),
+            PropertyValue::Int(3),
+        ]);
+        let json = serde_json::to_string(&arr).unwrap();
+        let parsed: PropertyValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(arr, parsed);
+
+        // Map serialization
+        let mut map = HashMap::new();
+        map.insert("key".to_string(), PropertyValue::String("value".to_string()));
+        let map_val = PropertyValue::Map(map);
+        let json = serde_json::to_string(&map_val).unwrap();
+        let parsed: PropertyValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(map_val, parsed);
+
+        // Nested serialization
+        let mut nested = HashMap::new();
+        nested.insert("arr".to_string(), PropertyValue::Array(vec![
+            PropertyValue::Int(1),
+            PropertyValue::Bool(true),
+        ]));
+        let nested_val = PropertyValue::Map(nested);
+        let json = serde_json::to_string(&nested_val).unwrap();
+        let parsed: PropertyValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(nested_val, parsed);
     }
 }

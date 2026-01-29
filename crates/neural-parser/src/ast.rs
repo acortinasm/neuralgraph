@@ -561,6 +561,8 @@ pub enum Literal {
     String(String),
     /// List of Literals
     List(Vec<Literal>),
+    /// Map of key-value pairs (Sprint 64)
+    Map(Vec<(String, Literal)>),
 }
 
 /// Aggregate functions for RETURN clauses.
@@ -1009,6 +1011,14 @@ impl std::fmt::Display for Literal {
                     write!(f, "{}", v)?;
                 }
                 write!(f, "]")
+            }
+            Literal::Map(entries) => {
+                write!(f, "{{")?;
+                for (i, (k, v)) in entries.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}: {}", k, v)?;
+                }
+                write!(f, "}}")
             }
         }
     }

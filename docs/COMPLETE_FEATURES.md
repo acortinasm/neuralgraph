@@ -1,10 +1,10 @@
-# NeuralGraphDB v0.9.6 - Documentación Completa de Funcionalidades
+# NeuralGraphDB v0.9.8 - Documentación Completa de Funcionalidades
 
 > Base de datos de grafos nativa en Rust para cargas de trabajo de IA
 
-**Versión**: 0.9.7
+**Versión**: 0.9.8
 **Fecha**: 2026-01-29
-**Estado**: Fase 7 (Paridad Competitiva y Escala) - Sprint 63
+**Estado**: Fase 7 (Paridad Competitiva y Escala) - Sprint 64
 
 ---
 
@@ -278,15 +278,60 @@ CREATE (a)-[:TRANSFER {port: 1, amount: 200}]->(b)
 ```rust
 /// Tipos de valores soportados
 pub enum PropertyValue {
-    Null,                    // Valor ausente
-    Bool(bool),              // true, false
-    Int(i64),                // Enteros con signo
-    Float(f64),              // Punto flotante
-    String(String),          // Cadenas UTF-8
-    Date(String),            // Formato YYYY-MM-DD
-    DateTime(String),        // ISO 8601
-    Vector(Vec<f32>),        // Embeddings vectoriales
+    Null,                              // Valor ausente
+    Bool(bool),                        // true, false
+    Int(i64),                          // Enteros con signo
+    Float(f64),                        // Punto flotante
+    String(String),                    // Cadenas UTF-8
+    Date(String),                      // Formato YYYY-MM-DD
+    DateTime(String),                  // ISO 8601
+    Vector(Vec<f32>),                  // Embeddings vectoriales
+    Array(Vec<PropertyValue>),         // Array heterogéneo (Sprint 64)
+    Map(HashMap<String, PropertyValue>), // Map/JSON (Sprint 64)
 }
+```
+
+#### Arrays y Maps (Sprint 64)
+
+NeuralGraphDB soporta tipos de datos complejos nativos, cerrando la brecha con FalkorDB:
+
+**Arrays:**
+```cypher
+// Array de strings
+CREATE (n:Person {name: "Alice", tags: ["rust", "graph", "database"]})
+
+// Array mixto
+CREATE (n:Item {data: ["text", 123, true, null]})
+
+// Arrays numéricos se convierten automáticamente a Vector para embeddings
+CREATE (n:Doc {embedding: [0.1, 0.2, 0.3, 0.4]})
+```
+
+**Maps:**
+```cypher
+// Map con propiedades anidadas
+CREATE (n:Config {name: "settings", options: {debug: true, level: 5, mode: "fast"}})
+
+// Maps anidados
+CREATE (n:Profile {name: "Bob", metadata: {scores: [100, 95, 88], active: true}})
+
+// Map vacío
+CREATE (n:Empty {config: {}})
+```
+
+**Acceso a propiedades:**
+```rust
+// Acceso a array
+let arr = PropertyValue::Array(vec![...]);
+arr.get_index(0)     // Acceso por índice
+arr.as_array()       // Slice del array
+arr.is_array()       // Verificación de tipo
+
+// Acceso a map
+let map = PropertyValue::Map(HashMap::from([...]));
+map.get("key")       // Acceso por clave
+map.as_map()         // Referencia al HashMap
+map.is_map()         // Verificación de tipo
 ```
 
 **Tabla de tipos:**
@@ -2307,6 +2352,7 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 | 61 | 0.9.5 | Distributed vector gRPC server, shard coordinator enhancements |
 | 62 | 0.9.6 | Full-text search index (tantivy): stemming, stop words, phrase/boolean queries |
 | 63 | 0.9.7 | Full-text search avanzado: fuzzy matching (Levenshtein), phonetic search (Soundex, Metaphone, DoubleMetaphone), 18 idiomas |
+| 64 | 0.9.8 | Array/Map data types: PropertyValue::Array, PropertyValue::Map, nested structures, JSON-compatible serialization |
 
 ---
 

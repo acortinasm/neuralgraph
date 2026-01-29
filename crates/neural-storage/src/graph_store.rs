@@ -209,6 +209,8 @@ fn value_to_key(value: &PropertyValue) -> String {
         PropertyValue::Date(s) => s.clone(),
         PropertyValue::DateTime(s) => s.clone(),
         PropertyValue::Vector(v) => format!("v:[{}]", v.len()),
+        PropertyValue::Array(a) => format!("a:[{}]", a.len()),
+        PropertyValue::Map(m) => format!("m:{{{}}}", m.len()),
     }
 }
 

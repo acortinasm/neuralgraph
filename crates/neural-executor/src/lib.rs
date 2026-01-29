@@ -911,6 +911,7 @@ fn execute_create(
 fn literal_to_property_value(lit: &neural_parser::Literal) -> neural_core::PropertyValue {
     use neural_core::PropertyValue;
     use neural_parser::Literal;
+    use std::collections::HashMap;
 
     match lit {
         Literal::String(s) => PropertyValue::String(s.clone()),
@@ -935,14 +936,24 @@ fn literal_to_property_value(lit: &neural_parser::Literal) -> neural_core::Prope
             }
 
             if is_numeric_vector && !items.is_empty() {
+                // Numeric lists become vectors for embeddings
                 PropertyValue::Vector(float_vec)
             } else {
-                // Fallback: Store as string representation for now, or handle general lists later.
-                // NeuralGraph core properties currently support primitives + Vector.
-                // For now, let's format it as a string to avoid crashing.
-                // Ideal would be PropertyValue::List(...) but that requires core changes.
-                PropertyValue::String(format!("{:?}", items))
+                // Non-numeric or empty lists become Arrays (Sprint 64)
+                let array_items: Vec<PropertyValue> = items
+                    .iter()
+                    .map(literal_to_property_value)
+                    .collect();
+                PropertyValue::Array(array_items)
             }
+        }
+        Literal::Map(entries) => {
+            // Convert map literal to PropertyValue::Map (Sprint 64)
+            let map: HashMap<String, PropertyValue> = entries
+                .iter()
+                .map(|(k, v)| (k.clone(), literal_to_property_value(v)))
+                .collect();
+            PropertyValue::Map(map)
         }
     }
 }
@@ -1210,7 +1221,14 @@ fn value_to_property_value(val: Value) -> neural_core::PropertyValue {
         Value::DateTime(s) => PropertyValue::DateTime(s),
         Value::Node(n) => PropertyValue::Int(n as i64),
         Value::Edge(e) => PropertyValue::Int(e as i64),
-        Value::List(_) => PropertyValue::Null,
+        Value::List(items) => {
+            // Convert Value::List to PropertyValue::Array
+            PropertyValue::Array(items.into_iter().map(value_to_property_value).collect())
+        }
+        Value::Map(map) => {
+            // Convert Value::Map to PropertyValue::Map
+            PropertyValue::Map(map.into_iter().map(|(k, v)| (k, value_to_property_value(v))).collect())
+        }
     }
 }
 

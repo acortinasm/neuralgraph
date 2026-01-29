@@ -47,6 +47,8 @@ pub enum Value {
     DateTime(String),
     /// List of values
     List(Vec<Value>),
+    /// Map/object of key-value pairs (Sprint 64)
+    Map(std::collections::HashMap<String, Value>),
 }
 
 impl Value {
@@ -107,6 +109,12 @@ impl Value {
             Value::Date(s) => serde_json::json!({ "type": "date", "value": s }),
             Value::DateTime(s) => serde_json::json!({ "type": "datetime", "value": s }),
             Value::List(l) => serde_json::Value::Array(l.iter().map(|v| v.to_json()).collect()),
+            Value::Map(m) => {
+                let obj: serde_json::Map<String, serde_json::Value> = m.iter()
+                    .map(|(k, v)| (k.clone(), v.to_json()))
+                    .collect();
+                serde_json::Value::Object(obj)
+            }
         }
     }
 
@@ -128,6 +136,12 @@ impl Value {
             Value::List(l) => {
                 let items: Vec<String> = l.iter().map(|v| v.to_simple_string()).collect();
                 format!("[{}]", items.join(", "))
+            }
+            Value::Map(m) => {
+                let items: Vec<String> = m.iter()
+                    .map(|(k, v)| format!("{}: {}", k, v.to_simple_string()))
+                    .collect();
+                format!("{{{}}}", items.join(", "))
             }
         }
     }
@@ -154,6 +168,16 @@ impl fmt::Display for Value {
                     write!(f, "{}", v)?;
                 }
                 write!(f, "]")
+            }
+            Value::Map(m) => {
+                write!(f, "{{")?;
+                for (i, (k, v)) in m.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}: {}", k, v)?;
+                }
+                write!(f, "}}")
             }
         }
     }

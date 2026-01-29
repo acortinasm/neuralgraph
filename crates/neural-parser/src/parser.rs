@@ -1114,6 +1114,26 @@ fn parse_literal(parser: &mut Parser<'_>) -> Result<Literal, ParseError> {
             }
             Ok(Literal::List(items))
         }
+        Some(Token::LBrace) => {
+            // Map literal: {key: value, key2: value2}
+            parser.next();
+            let mut entries = Vec::new();
+            if !parser.match_token(&Token::RBrace) {
+                loop {
+                    let key = parser.parse_identifier()?;
+                    parser.expect(&Token::Colon)?;
+                    let value = parse_literal(parser)?;
+                    entries.push((key, value));
+                    if parser.match_token(&Token::Comma) {
+                        continue;
+                    } else {
+                        parser.expect(&Token::RBrace)?;
+                        break;
+                    }
+                }
+            }
+            Ok(Literal::Map(entries))
+        }
         Some(token) => Err(ParseError::UnexpectedToken { position: parser.pos, expected: "literal value".to_string(), found: format!("{:?}", token) }),
         None => Err(ParseError::UnexpectedEof { expected: "literal value".to_string() }),
     }

@@ -1,4 +1,4 @@
-# NeuralGraphDB Quick Reference (v0.9.7)
+# NeuralGraphDB Quick Reference (v0.9.8)
 
 ## Shell Commands
 
@@ -54,6 +54,9 @@ MATCH p = shortestPath((a)-[*]->(b)) RETURN p        -- Shortest path
 -- Create
 CREATE (n:Person {name: "Alice", age: 30})
 CREATE (a)-[:KNOWS {since: 2020}]->(b)
+
+-- Arrays and Maps (Sprint 64)
+CREATE (n:Person {tags: ["dev", "rust"], config: {debug: true, level: 5}})
 
 -- Update
 MATCH (n:Person) WHERE n.name = "Alice" SET n.age = 31

@@ -1452,6 +1452,8 @@ fn demo_property_values() {
             PropertyValue::Date(_) => "Date",
             PropertyValue::DateTime(_) => "DateTime",
             PropertyValue::Vector(_) => "Vector",
+            PropertyValue::Array(_) => "Array",
+            PropertyValue::Map(_) => "Map",
         };
         println!("  {:12} : {:8} = {:?}", key, type_name, value);
     }

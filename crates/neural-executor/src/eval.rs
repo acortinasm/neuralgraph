@@ -403,6 +403,12 @@ fn literal_to_value(lit: &Literal) -> Value {
             let values = items.iter().map(literal_to_value).collect();
             Value::List(values)
         }
+        Literal::Map(entries) => {
+            let map = entries.iter()
+                .map(|(k, v)| (k.clone(), literal_to_value(v)))
+                .collect();
+            Value::Map(map)
+        }
     }
 }
 
@@ -416,8 +422,19 @@ pub fn property_value_to_value(pv: &PropertyValue) -> Value {
         PropertyValue::String(s) => Value::String(s.clone()),
         PropertyValue::Date(s) => Value::Date(s.clone()),
         PropertyValue::DateTime(s) => Value::DateTime(s.clone()),
-        PropertyValue::Vector(_) => {
-            Value::String(format!("{:?}", pv))
+        PropertyValue::Vector(v) => {
+            // Convert vector to list of floats for proper JSON output
+            Value::List(v.iter().map(|f| Value::Float(*f as f64)).collect())
+        }
+        PropertyValue::Array(items) => {
+            // Recursively convert array items
+            Value::List(items.iter().map(property_value_to_value).collect())
+        }
+        PropertyValue::Map(map) => {
+            // Recursively convert map entries
+            Value::Map(map.iter()
+                .map(|(k, v)| (k.clone(), property_value_to_value(v)))
+                .collect())
         }
     }
 }
@@ -432,6 +449,7 @@ fn to_bool(value: &Value) -> bool {
         Value::String(s) => !s.is_empty(),
         Value::Node(_) | Value::Edge(_) => true,
         Value::List(l) => !l.is_empty(),
+        Value::Map(m) => !m.is_empty(),
         Value::Date(_) | Value::DateTime(_) => true,
     }
 }

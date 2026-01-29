@@ -313,6 +313,7 @@ impl<'a> Executor<'a> {
              Value::Null => PropertyValue::Null,
              Value::Node(_) | Value::Edge(_) => return Err(ExecutionError::ExecutionError("Cannot scan by ID".into())),
              Value::List(_) => return Err(ExecutionError::ExecutionError("Cannot scan by list".into())),
+             Value::Map(_) => return Err(ExecutionError::ExecutionError("Cannot scan by map".into())),
         };
         let binding = binding.to_string();
         let property = property.to_string();
@@ -890,6 +891,12 @@ impl From<neural_parser::Literal> for Value {
             neural_parser::Literal::List(items) => {
                 let values = items.into_iter().map(Value::from).collect();
                 Value::List(values)
+            }
+            neural_parser::Literal::Map(entries) => {
+                let map = entries.into_iter()
+                    .map(|(k, v)| (k, Value::from(v)))
+                    .collect();
+                Value::Map(map)
             }
         }
     }

@@ -2,7 +2,7 @@
 
 > The Graph Database for AI Applications
 
-**Version**: 0.9.7
+**Version**: 0.9.8
 **Last Updated**: January 2026
 
 ---
@@ -161,7 +161,45 @@ Relationships connect nodes and describe how they relate:
 | Date | `date("2026-01-28")` | Calendar dates |
 | DateTime | `datetime()` | Timestamps |
 | List | `["a", "b", "c"]` | Arrays of values |
+| Map | `{key: "value"}` | Key-value objects |
 | Null | `null` | Missing value |
+
+### Arrays and Maps (Sprint 64)
+
+NeuralGraphDB supports complex data types for flexible data modeling:
+
+#### Arrays
+
+Store heterogeneous lists of values:
+
+```cypher
+-- String array
+CREATE (n:Person {name: "Alice", tags: ["developer", "rust", "graph"]})
+
+-- Mixed-type array
+CREATE (n:Item {data: ["text", 123, true, null]})
+
+-- Numeric arrays become vectors (optimized for embeddings)
+CREATE (n:Doc {embedding: [0.1, 0.2, 0.3, 0.4]})
+```
+
+#### Maps
+
+Store nested JSON-like structures:
+
+```cypher
+-- Simple map
+CREATE (n:Config {name: "settings", options: {debug: true, level: 5}})
+
+-- Nested structures
+CREATE (n:Profile {
+    name: "Bob",
+    metadata: {scores: [100, 95, 88], active: true}
+})
+
+-- Query nested data
+MATCH (n:Config) RETURN n.options AS config
+```
 
 ---
 
