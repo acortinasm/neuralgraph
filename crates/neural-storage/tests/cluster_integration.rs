@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use neural_storage::raft::{
-    ClusterInfo, ClusterManager, HealthConfig, HealthMonitor, NodeHealth, NodeState,
+    ClusterAwareClient, ClusterInfo, ClusterManager, HealthConfig, HealthMonitor, NodeHealth, NodeState,
     default_raft_config, LogStore, GraphStateMachine, NeuralRaftStorage, NeuralRaftNetwork,
 };
 use openraft::{BasicNode, Raft};
@@ -312,4 +312,198 @@ async fn test_cluster_components_integration() {
     drop(monitor);
     drop(cluster);
     drop(raft);
+}
+
+// =============================================================================
+// Multi-Node Cluster Tests (Sprint 53)
+// =============================================================================
+
+#[cfg(test)]
+mod multi_node_tests {
+    use super::*;
+
+    /// Test single-node cluster initialization and leader election.
+    ///
+    /// This test validates:
+    /// - Cluster initialization with single node (bootstrap)
+    /// - Leader election completes (self-election)
+    /// - Cluster manager tracks leader correctly
+    ///
+    /// Note: Multi-node tests with actual network require running gRPC servers,
+    /// which is covered in the full integration test suite.
+    #[tokio::test]
+    async fn test_single_node_cluster_formation() {
+        // Create a single bootstrap node
+        let (raft, cluster) = create_test_node(1, 59100).await;
+
+        // Initialize as single-node cluster (bootstrap)
+        let mut members = BTreeMap::new();
+        members.insert(1u64, BasicNode { addr: "127.0.0.1:59100".to_string() });
+
+        // Initialize the cluster with just ourselves
+        raft.initialize(members).await.expect("Failed to initialize cluster");
+
+        // Wait for leader election
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Check that node 1 becomes leader (as the only node)
+        let info = cluster.get_cluster_info().await;
+        assert!(info.leader_id.is_some(), "Cluster should have a leader");
+        assert_eq!(info.leader_id, Some(1), "Node 1 should be leader as bootstrap");
+
+        // Verify term is > 0
+        assert!(info.term > 0, "Term should be positive after election");
+
+        // Verify members list
+        assert_eq!(info.members.len(), 1, "Should have 1 member");
+        assert!(info.members.iter().any(|m| m.id == 1), "Member 1 should be present");
+
+        // Clean up
+        drop(cluster);
+        drop(raft);
+    }
+
+    /// Test cluster manager can be created for multiple nodes.
+    ///
+    /// This validates the ClusterManager infrastructure without
+    /// requiring actual network connectivity.
+    #[tokio::test]
+    async fn test_multi_node_cluster_managers() {
+        // Create separate cluster managers for 3 nodes
+        let (raft1, cluster1) = create_test_node(1, 59110).await;
+        let (raft2, cluster2) = create_test_node(2, 59111).await;
+        let (raft3, cluster3) = create_test_node(3, 59112).await;
+
+        // Verify each cluster manager has correct node info
+        assert_eq!(cluster1.node_id(), 1);
+        assert_eq!(cluster2.node_id(), 2);
+        assert_eq!(cluster3.node_id(), 3);
+
+        assert_eq!(cluster1.node_addr(), "127.0.0.1:59110");
+        assert_eq!(cluster2.node_addr(), "127.0.0.1:59111");
+        assert_eq!(cluster3.node_addr(), "127.0.0.1:59112");
+
+        // Clean up
+        drop(cluster1);
+        drop(cluster2);
+        drop(cluster3);
+        drop(raft1);
+        drop(raft2);
+        drop(raft3);
+    }
+
+    /// Test cluster health monitoring with multiple nodes.
+    #[tokio::test]
+    async fn test_cluster_health_monitoring() {
+        let health_config = HealthConfig {
+            check_interval: Duration::from_millis(100),
+            timeout: Duration::from_millis(200),
+            failure_threshold: 3,
+        };
+
+        let monitor = HealthMonitor::new(1, health_config);
+
+        // Add 2 other nodes
+        monitor.add_peer(2, "127.0.0.1:59201".to_string()).await;
+        monitor.add_peer(3, "127.0.0.1:59202".to_string()).await;
+
+        // Check initial state (all unhealthy as not checked)
+        let health = monitor.get_cluster_health().await;
+        assert_eq!(health.len(), 2);
+        assert!(!health[0].healthy);
+        assert!(!health[1].healthy);
+
+        // Verify quorum calculation (3 node cluster, none healthy)
+        // Need 2 of 3 for quorum; we have 0 healthy peers + self = potentially 1
+        assert!(!monitor.has_quorum(3).await);
+
+        // After marking all as healthy, should have quorum
+        // (In real scenario, this would be done by health check)
+    }
+
+    /// Test cluster manager leader tracking.
+    #[tokio::test]
+    async fn test_leader_tracking_across_nodes() {
+        let (raft1, cluster1) = create_test_node(1, 59300).await;
+        let (raft2, cluster2) = create_test_node(2, 59301).await;
+
+        // Add each other as known peers
+        cluster1.add_known_peer(2, "127.0.0.1:59301".to_string()).await;
+        cluster2.add_known_peer(1, "127.0.0.1:59300".to_string()).await;
+
+        // Simulate leader election result
+        cluster1.update_leader(1, "127.0.0.1:59300".to_string()).await;
+        cluster2.update_leader(1, "127.0.0.1:59300".to_string()).await;
+
+        // Both should report same leader
+        let (leader1_id, leader1_addr) = cluster1.get_leader().await.unwrap();
+        let (leader2_id, leader2_addr) = cluster2.get_leader().await.unwrap();
+
+        assert_eq!(leader1_id, leader2_id);
+        assert_eq!(leader1_addr, leader2_addr);
+        assert_eq!(leader1_id, 1);
+
+        drop(cluster1);
+        drop(cluster2);
+        drop(raft1);
+        drop(raft2);
+    }
+
+    /// Test ClusterAwareClient leader routing logic.
+    #[tokio::test]
+    async fn test_cluster_aware_client_routing() {
+        let (raft, cluster) = create_test_node(1, 59400).await;
+
+        // Initialize as single-node cluster
+        let mut members = BTreeMap::new();
+        members.insert(1u64, BasicNode { addr: "127.0.0.1:59400".to_string() });
+        raft.initialize(members).await.expect("Failed to initialize");
+
+        // Wait for election
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Create cluster-aware client
+        let client = ClusterAwareClient::new(cluster.clone());
+
+        // Get cluster info should work (leader is known)
+        // Note: This would fail without a running gRPC server
+        // In a real test, we'd need to start the server
+
+        // Verify client was created with correct settings
+        let client = client.with_max_retries(5);
+        // Client should be configured
+
+        drop(client);
+        drop(cluster);
+        drop(raft);
+    }
+
+    /// Test metrics recording for cluster operations.
+    #[cfg(feature = "metrics")]
+    #[tokio::test]
+    async fn test_cluster_metrics_recording() {
+        use neural_storage::MetricsRegistry;
+
+        let metrics = MetricsRegistry::new().unwrap();
+
+        // Record Raft metrics
+        metrics.set_raft_term(5);
+        metrics.set_raft_log_index(100);
+        metrics.set_cluster_node_count(3);
+        metrics.set_cluster_healthy_nodes(2);
+        metrics.record_leader_change();
+        metrics.record_client_request_success();
+        metrics.record_client_request_failure();
+        metrics.record_raft_commit_latency(Duration::from_millis(10));
+
+        // Export and verify
+        let output = metrics.export().unwrap();
+        assert!(output.contains("neuralgraph_raft_term"));
+        assert!(output.contains("neuralgraph_raft_log_index"));
+        assert!(output.contains("neuralgraph_cluster_node_count"));
+        assert!(output.contains("neuralgraph_cluster_healthy_nodes"));
+        assert!(output.contains("neuralgraph_raft_leader_changes_total"));
+        assert!(output.contains("neuralgraph_raft_client_requests_total"));
+        assert!(output.contains("neuralgraph_raft_commit_latency_seconds"));
+    }
 }

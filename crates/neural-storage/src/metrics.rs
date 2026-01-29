@@ -47,7 +47,7 @@ use std::time::Duration;
 
 #[cfg(feature = "metrics")]
 use prometheus::{
-    Encoder, Histogram, HistogramOpts, IntCounter, IntGauge, Registry, TextEncoder,
+    Encoder, Histogram, HistogramOpts, IntCounter, IntCounterVec, IntGauge, Opts, Registry, TextEncoder,
 };
 
 /// Error type for metrics operations.
@@ -91,6 +91,24 @@ pub struct MetricsRegistry {
     active_connections: IntGauge,
     /// Total vector count.
     vector_count: IntGauge,
+
+    // =========================================================================
+    // Raft Cluster Metrics (Sprint 53)
+    // =========================================================================
+    /// Current Raft term.
+    raft_term: IntGauge,
+    /// Total leader elections/changes.
+    raft_leader_changes: IntCounter,
+    /// Current committed log index.
+    raft_log_index: IntGauge,
+    /// Raft commit latency histogram.
+    raft_commit_latency: Histogram,
+    /// Total nodes in the cluster.
+    cluster_node_count: IntGauge,
+    /// Healthy nodes in the cluster.
+    cluster_healthy_nodes: IntGauge,
+    /// Client requests by status (success/failure).
+    raft_client_requests: IntCounterVec,
 }
 
 #[cfg(feature = "metrics")]
@@ -150,6 +168,59 @@ impl MetricsRegistry {
             "Total number of indexed vectors",
         )?;
 
+        // Raft cluster metrics
+        let raft_term = IntGauge::new(
+            "neuralgraph_raft_term",
+            "Current Raft term",
+        )?;
+
+        let raft_leader_changes = IntCounter::new(
+            "neuralgraph_raft_leader_changes_total",
+            "Total number of leader elections/changes",
+        )?;
+
+        let raft_log_index = IntGauge::new(
+            "neuralgraph_raft_log_index",
+            "Current committed log index",
+        )?;
+
+        let raft_commit_latency = Histogram::with_opts(
+            HistogramOpts::new(
+                "neuralgraph_raft_commit_latency_seconds",
+                "Raft commit latency in seconds",
+            )
+            .buckets(vec![
+                0.001,  // 1ms
+                0.005,  // 5ms
+                0.01,   // 10ms
+                0.025,  // 25ms
+                0.05,   // 50ms
+                0.1,    // 100ms
+                0.25,   // 250ms
+                0.5,    // 500ms
+                1.0,    // 1s
+                2.5,    // 2.5s
+            ]),
+        )?;
+
+        let cluster_node_count = IntGauge::new(
+            "neuralgraph_cluster_node_count",
+            "Total number of nodes in the cluster",
+        )?;
+
+        let cluster_healthy_nodes = IntGauge::new(
+            "neuralgraph_cluster_healthy_nodes",
+            "Number of healthy nodes in the cluster",
+        )?;
+
+        let raft_client_requests = IntCounterVec::new(
+            Opts::new(
+                "neuralgraph_raft_client_requests_total",
+                "Total Raft client requests by status",
+            ),
+            &["status"], // "success" or "failure"
+        )?;
+
         // Register all metrics
         registry.register(Box::new(query_latency.clone()))?;
         registry.register(Box::new(query_count.clone()))?;
@@ -158,6 +229,13 @@ impl MetricsRegistry {
         registry.register(Box::new(cache_size.clone()))?;
         registry.register(Box::new(active_connections.clone()))?;
         registry.register(Box::new(vector_count.clone()))?;
+        registry.register(Box::new(raft_term.clone()))?;
+        registry.register(Box::new(raft_leader_changes.clone()))?;
+        registry.register(Box::new(raft_log_index.clone()))?;
+        registry.register(Box::new(raft_commit_latency.clone()))?;
+        registry.register(Box::new(cluster_node_count.clone()))?;
+        registry.register(Box::new(cluster_healthy_nodes.clone()))?;
+        registry.register(Box::new(raft_client_requests.clone()))?;
 
         Ok(Self {
             registry,
@@ -168,6 +246,13 @@ impl MetricsRegistry {
             cache_size,
             active_connections,
             vector_count,
+            raft_term,
+            raft_leader_changes,
+            raft_log_index,
+            raft_commit_latency,
+            cluster_node_count,
+            cluster_healthy_nodes,
+            raft_client_requests,
         })
     }
 
@@ -232,6 +317,50 @@ impl MetricsRegistry {
             0.0
         }
     }
+
+    // =========================================================================
+    // Raft Cluster Metrics (Sprint 53)
+    // =========================================================================
+
+    /// Sets the current Raft term.
+    pub fn set_raft_term(&self, term: u64) {
+        self.raft_term.set(term as i64);
+    }
+
+    /// Increments the leader change counter.
+    pub fn record_leader_change(&self) {
+        self.raft_leader_changes.inc();
+    }
+
+    /// Sets the current committed log index.
+    pub fn set_raft_log_index(&self, index: u64) {
+        self.raft_log_index.set(index as i64);
+    }
+
+    /// Records Raft commit latency.
+    pub fn record_raft_commit_latency(&self, duration: Duration) {
+        self.raft_commit_latency.observe(duration.as_secs_f64());
+    }
+
+    /// Sets the total number of nodes in the cluster.
+    pub fn set_cluster_node_count(&self, count: usize) {
+        self.cluster_node_count.set(count as i64);
+    }
+
+    /// Sets the number of healthy nodes in the cluster.
+    pub fn set_cluster_healthy_nodes(&self, count: usize) {
+        self.cluster_healthy_nodes.set(count as i64);
+    }
+
+    /// Records a successful client request.
+    pub fn record_client_request_success(&self) {
+        self.raft_client_requests.with_label_values(&["success"]).inc();
+    }
+
+    /// Records a failed client request.
+    pub fn record_client_request_failure(&self) {
+        self.raft_client_requests.with_label_values(&["failure"]).inc();
+    }
 }
 
 #[cfg(feature = "metrics")]
@@ -243,6 +372,10 @@ impl std::fmt::Debug for MetricsRegistry {
             .field("cache_misses", &self.cache_misses.get())
             .field("cache_size", &self.cache_size.get())
             .field("vector_count", &self.vector_count.get())
+            .field("raft_term", &self.raft_term.get())
+            .field("raft_log_index", &self.raft_log_index.get())
+            .field("cluster_node_count", &self.cluster_node_count.get())
+            .field("cluster_healthy_nodes", &self.cluster_healthy_nodes.get())
             .finish()
     }
 }
@@ -299,6 +432,24 @@ impl MetricsRegistry {
     pub fn cache_hit_rate(&self) -> f64 {
         0.0
     }
+
+    // Raft cluster metrics (no-op)
+    /// No-op: Sets the Raft term.
+    pub fn set_raft_term(&self, _term: u64) {}
+    /// No-op: Records a leader change.
+    pub fn record_leader_change(&self) {}
+    /// No-op: Sets the Raft log index.
+    pub fn set_raft_log_index(&self, _index: u64) {}
+    /// No-op: Records Raft commit latency.
+    pub fn record_raft_commit_latency(&self, _duration: Duration) {}
+    /// No-op: Sets the cluster node count.
+    pub fn set_cluster_node_count(&self, _count: usize) {}
+    /// No-op: Sets the healthy node count.
+    pub fn set_cluster_healthy_nodes(&self, _count: usize) {}
+    /// No-op: Records a successful client request.
+    pub fn record_client_request_success(&self) {}
+    /// No-op: Records a failed client request.
+    pub fn record_client_request_failure(&self) {}
 }
 
 // =============================================================================

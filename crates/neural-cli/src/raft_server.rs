@@ -23,8 +23,9 @@ use neural_storage::raft::network::proto::{
     JoinRequest, JoinResponse, NodeInfo,
     ClusterInfoRequest, ClusterInfoResponse,
     HealthCheckRequest, HealthCheckResponse,
+    ClientRequestMessage, ClientResponseMessage,
 };
-use neural_storage::raft::types::TypeConfig;
+use neural_storage::raft::types::{TypeConfig, RaftRequest};
 use neural_storage::raft::ClusterManager;
 
 /// Implements the `RaftService` trait for handling Raft gRPC calls.
@@ -262,5 +263,82 @@ impl RaftService for RaftGrpcServer
             state,
             last_log_index,
         }))
+    }
+
+    /// Handles `ClientRequest` RPCs for submitting graph mutations.
+    async fn client_request(
+        &self,
+        request: Request<ClientRequestMessage>,
+    ) -> Result<Response<ClientResponseMessage>, Status> {
+        let req = request.into_inner();
+
+        // Check if we have cluster management
+        let cluster = self.cluster.as_ref().ok_or_else(|| {
+            Status::unavailable("Cluster management not enabled")
+        })?;
+
+        // Check if we're the leader
+        let metrics = self.raft.metrics().borrow().clone();
+        let current_leader = metrics.current_leader;
+
+        if current_leader != Some(cluster.node_id()) {
+            // Not the leader, redirect to leader
+            let leader_addr = if let Some(leader_id) = current_leader {
+                let membership = metrics.membership_config.membership();
+                membership
+                    .nodes()
+                    .find(|(id, _)| **id == leader_id)
+                    .map(|(_, node)| node.addr.clone())
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+
+            return Ok(Response::new(ClientResponseMessage {
+                success: false,
+                response: vec![],
+                error: "Not the leader".to_string(),
+                leader_id: current_leader.unwrap_or(0),
+                leader_addr,
+                log_index: 0,
+            }));
+        }
+
+        // Deserialize the request
+        let raft_request: RaftRequest = bincode::deserialize(&req.request)
+            .map_err(|e| Status::invalid_argument(format!("Failed to deserialize request: {}", e)))?;
+
+        // Submit to Raft - this will replicate to followers and apply to state machine
+        match self.raft.client_write(raft_request).await {
+            Ok(client_write_response) => {
+                // Get the response from the state machine
+                let log_index = client_write_response.log_id.index;
+                let raft_response = client_write_response.data;
+
+                let response_bytes = bincode::serialize(&raft_response)
+                    .map_err(|e| Status::internal(format!("Failed to serialize response: {}", e)))?;
+
+                Ok(Response::new(ClientResponseMessage {
+                    success: true,
+                    response: response_bytes,
+                    error: String::new(),
+                    leader_id: cluster.node_id(),
+                    leader_addr: cluster.node_addr().to_string(),
+                    log_index,
+                }))
+            }
+            Err(e) => {
+                // Check if this is a forward-to-leader error
+                let error_str = e.to_string();
+                Ok(Response::new(ClientResponseMessage {
+                    success: false,
+                    response: vec![],
+                    error: error_str,
+                    leader_id: current_leader.unwrap_or(0),
+                    leader_addr: String::new(),
+                    log_index: 0,
+                }))
+            }
+        }
     }
 }

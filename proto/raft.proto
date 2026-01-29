@@ -22,6 +22,10 @@ service Raft {
 
   // HealthCheck checks the health status of a node.
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // ClientRequest submits a graph mutation to the Raft leader.
+  // If sent to a follower, returns NotLeader with leader information.
+  rpc ClientRequest(ClientRequestMessage) returns (ClientResponseMessage);
 }
 
 // The request message containing the serialized AppendEntriesRequest.
@@ -102,4 +106,32 @@ message HealthCheckResponse {
   uint64 term = 2;
   string state = 3;  // "leader", "follower", "candidate", "learner"
   uint64 last_log_index = 4;
+}
+
+// ============================================================================
+// Client Request Messages (for submitting mutations to leader)
+// ============================================================================
+
+// Client request to submit a graph mutation.
+message ClientRequestMessage {
+  // Serialized RaftRequest (graph mutation).
+  bytes request = 1;
+  // Optional client-provided request ID for idempotency.
+  string request_id = 2;
+}
+
+// Response to a client request.
+message ClientResponseMessage {
+  // Whether the request was successful.
+  bool success = 1;
+  // Serialized RaftResponse (mutation result).
+  bytes response = 2;
+  // Error message if not successful.
+  string error = 3;
+  // If not leader, the current leader ID.
+  uint64 leader_id = 4;
+  // If not leader, the current leader address.
+  string leader_addr = 5;
+  // Log index where this entry was committed.
+  uint64 log_index = 6;
 }

@@ -256,35 +256,40 @@ impl ClusterAwareClient {
             let mut client = self.get_client(leader_id, &leader_addr).await?;
 
             // Serialize the request
-            let _req_data = bincode::serialize(request)
+            let req_data = bincode::serialize(request)
                 .map_err(|e| ClientError::OperationFailed(e.to_string()))?;
 
-            // Send via append_entries (piggyback on Raft protocol)
-            // In a real implementation, you'd have a dedicated client_request RPC
-            // For now, we'll use the cluster info to verify leadership
-            let info_request = tonic::Request::new(proto::ClusterInfoRequest {});
-            let info_response = client
-                .get_cluster_info(info_request)
+            // Send via ClientRequest RPC
+            let client_request = tonic::Request::new(proto::ClientRequestMessage {
+                request: req_data,
+                request_id: String::new(), // Could add idempotency key here
+            });
+
+            let response = client
+                .client_request(client_request)
                 .await
                 .map_err(|e| ClientError::NetworkError(e.to_string()))?;
 
-            let info = info_response.into_inner();
+            let resp = response.into_inner();
 
-            // Verify this node is still the leader
-            if info.leader_id != leader_id {
-                // Leader changed, update cache and retry
-                if info.leader_id != 0 && !info.leader_addr.is_empty() {
-                    self.cluster
-                        .update_leader(info.leader_id, info.leader_addr)
-                        .await;
-                }
+            if resp.success {
+                // Deserialize the response
+                let raft_response: super::types::RaftResponse = bincode::deserialize(&resp.response)
+                    .map_err(|e| ClientError::OperationFailed(format!("Failed to deserialize response: {}", e)))?;
+                return Ok(raft_response);
+            }
+
+            // Check if we need to redirect to a different leader
+            if resp.leader_id != 0 && !resp.leader_addr.is_empty() && resp.leader_id != leader_id {
+                // Update leader cache and retry
+                self.cluster
+                    .update_leader(resp.leader_id, resp.leader_addr)
+                    .await;
                 continue;
             }
 
-            // The node is the leader, we would submit the request here
-            // In a full implementation, there would be a ClientRequest RPC
-            // For now, return a success response indicating the leader was found
-            return Ok(super::types::RaftResponse::ok(0));
+            // Operation failed
+            return Err(ClientError::OperationFailed(resp.error));
         }
     }
 
