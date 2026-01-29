@@ -2,7 +2,7 @@
 
 > The Graph Database for AI Applications
 
-**Version**: 0.9.5
+**Version**: 0.9.7
 **Last Updated**: January 2026
 
 ---
@@ -82,10 +82,12 @@ CREATE (bob:Person {name: "Bob", age: 25})
 CREATE (acme:Company {name: "Acme Corp"})
 
 -- Create relationships
-MATCH (a:Person {name: "Alice"}), (b:Person {name: "Bob"})
+MATCH (a:Person), (b:Person)
+WHERE a.name = "Alice" AND b.name = "Bob"
 CREATE (a)-[:KNOWS {since: 2020}]->(b)
 
-MATCH (a:Person {name: "Alice"}), (c:Company {name: "Acme Corp"})
+MATCH (a:Person), (c:Company)
+WHERE a.name = "Alice" AND c.name = "Acme Corp"
 CREATE (a)-[:WORKS_AT {role: "Engineer"}]->(c)
 ```
 
@@ -93,7 +95,8 @@ CREATE (a)-[:WORKS_AT {role: "Engineer"}]->(c)
 
 ```cypher
 -- Find Alice's connections
-MATCH (alice:Person {name: "Alice"})-[r]->(other)
+MATCH (alice:Person)-[r]->(other)
+WHERE alice.name = "Alice"
 RETURN type(r) AS relationship, other.name AS connected_to
 ```
 
@@ -175,7 +178,7 @@ NGQL is NeuralGraph's query language, similar to Cypher.
 MATCH (n:Person) RETURN n
 
 -- Nodes with specific properties
-MATCH (n:Person {name: "Alice"}) RETURN n
+MATCH (n:Person) WHERE n.name = "Alice" RETURN n
 
 -- Patterns with relationships
 MATCH (a:Person)-[:KNOWS]->(b:Person) RETURN a.name, b.name
@@ -287,7 +290,8 @@ RETURN p, length(p)
 CREATE (n:Person {name: "Carol", age: 28})
 
 -- Create relationship
-MATCH (a:Person {name: "Alice"}), (b:Person {name: "Bob"})
+MATCH (a:Person), (b:Person)
+WHERE a.name = "Alice" AND b.name = "Bob"
 CREATE (a)-[:KNOWS]->(b)
 
 -- Create everything at once
@@ -297,10 +301,12 @@ CREATE (a:Person {name: "Dan"})-[:KNOWS]->(b:Person {name: "Eve"})
 #### SET - Update Properties
 
 ```cypher
-MATCH (n:Person {name: "Alice"})
+MATCH (n:Person)
+WHERE n.name = "Alice"
 SET n.age = 31
 
-MATCH (n:Person {name: "Alice"})
+MATCH (n:Person)
+WHERE n.name = "Alice"
 SET n.verified = true, n.updated_at = datetime()
 ```
 
@@ -313,11 +319,13 @@ WHERE a.name = "Alice" AND b.name = "Bob"
 DELETE r
 
 -- Delete node (must have no relationships)
-MATCH (n:Person {name: "Alice"})
+MATCH (n:Person)
+WHERE n.name = "Alice"
 DELETE n
 
 -- Delete node and all its relationships
-MATCH (n:Person {name: "Alice"})
+MATCH (n:Person)
+WHERE n.name = "Alice"
 DETACH DELETE n
 ```
 
@@ -423,8 +431,8 @@ COMMIT
 BEGIN
 
 -- Make changes
-MATCH (a:Account {id: "A1"}) SET a.balance = a.balance - 100
-MATCH (b:Account {id: "A2"}) SET b.balance = b.balance + 100
+MATCH (a:Account) WHERE a.id = "A1" SET a.balance = a.balance - 100
+MATCH (b:Account) WHERE b.id = "A2" SET b.balance = b.balance + 100
 
 -- Oops, something went wrong!
 ROLLBACK
@@ -454,7 +462,17 @@ Before searching, create an index on the properties you want to search:
 -- Create an index named 'paper_search' on Paper nodes
 -- Index the 'title' and 'abstract' properties
 CALL neural.fulltext.createIndex('paper_search', 'Paper', ['title', 'abstract'])
+
+-- Create an index with a specific language (for proper stemming)
+CALL neural.fulltext.createIndex('spanish_idx', 'Article', ['titulo'], 'spanish')
+
+-- Create an index with phonetic search enabled
+CALL neural.fulltext.createIndex('name_idx', 'Person', ['name'], 'english', 'soundex')
 ```
+
+**Supported Languages:** English, Spanish, French, German, Italian, Portuguese, Dutch, Swedish, Norwegian, Danish, Finnish, Russian, Hungarian, Romanian, Turkish, Arabic, Greek, Tamil
+
+**Phonetic Algorithms:** `soundex`, `metaphone`, `double_metaphone`
 
 ### Searching
 
@@ -489,12 +507,53 @@ YIELD node, score
 RETURN node.title
 ```
 
+### Fuzzy Search (Typo Tolerance)
+
+Find matches even with spelling mistakes using Levenshtein distance:
+
+```cypher
+-- fuzzyQuery: (index_name, query, limit, max_edit_distance)
+-- The 4th argument is the maximum edit distance (default: 1)
+
+-- Distance 1: "machin" matches "machine"
+CALL neural.fulltext.fuzzyQuery('paper_search', 'machin lerning', 10)
+YIELD node, score
+RETURN node.title
+
+-- Distance 2: allows more typos
+CALL neural.fulltext.fuzzyQuery('paper_search', 'nueral ntwrks', 10, 2)
+YIELD node, score
+RETURN node.title
+```
+
+### Phonetic Search (Sound-Alike Matching)
+
+Match words that sound similar, useful for names:
+
+```cypher
+-- First, create an index with phonetic enabled
+CALL neural.fulltext.createIndex('name_idx', 'Person', ['name'], 'english', 'soundex')
+
+-- Now "Smith" matches "Smyth", "Smithe", etc.
+CALL neural.fulltext.query('name_idx', 'Smith', 10)
+YIELD node, score
+RETURN node.name
+
+-- Algorithms:
+-- soundex: Classic algorithm, good for English names
+-- metaphone: More accurate than Soundex
+-- double_metaphone: Handles edge cases and non-English words
+```
+
 ### Features
 
 - **Stemming**: "learning", "learns", "learned" all match "learn"
 - **Stop words**: Common words like "the", "a", "is" are ignored
 - **Relevance ranking**: Results sorted by BM25 score
 - **Multiple properties**: Search across title, abstract, content simultaneously
+- **Fuzzy matching**: Find results even with typos (configurable edit distance)
+- **Phonetic search**: Match sound-alike words (Soundex, Metaphone, DoubleMetaphone)
+- **18 languages**: Proper stemming for English, Spanish, French, German, and more
 
 ### Managing Indexes
 

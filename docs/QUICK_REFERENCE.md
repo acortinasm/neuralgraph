@@ -1,4 +1,4 @@
-# NeuralGraphDB Quick Reference (v0.9.6)
+# NeuralGraphDB Quick Reference (v0.9.7)
 
 ## Shell Commands
 
@@ -23,7 +23,7 @@
 ```cypher
 -- Find nodes
 MATCH (n:Person) RETURN n
-MATCH (n:Person {name: "Alice"}) RETURN n
+MATCH (n:Person) WHERE n.name = "Alice" RETURN n
 
 -- Find patterns
 MATCH (a:Person)-[:KNOWS]->(b:Person) RETURN a, b
@@ -56,11 +56,11 @@ CREATE (n:Person {name: "Alice", age: 30})
 CREATE (a)-[:KNOWS {since: 2020}]->(b)
 
 -- Update
-MATCH (n:Person {name: "Alice"}) SET n.age = 31
+MATCH (n:Person) WHERE n.name = "Alice" SET n.age = 31
 
 -- Delete
-MATCH (n:Person {name: "Alice"}) DELETE n            -- Node only
-MATCH (n:Person {name: "Alice"}) DETACH DELETE n     -- Node + relationships
+MATCH (n:Person) WHERE n.name = "Alice" DELETE n            -- Node only
+MATCH (n:Person) WHERE n.name = "Alice" DETACH DELETE n     -- Node + relationships
 MATCH (a)-[r:KNOWS]->(b) DELETE r                    -- Relationship
 
 -- Upsert
@@ -90,6 +90,12 @@ ROLLBACK   -- Undo all changes
 -- Create index on properties
 CALL neural.fulltext.createIndex('search_idx', 'Paper', ['title', 'abstract'])
 
+-- Create index with language (18 supported)
+CALL neural.fulltext.createIndex('es_idx', 'Article', ['titulo'], 'spanish')
+
+-- Create index with phonetic search
+CALL neural.fulltext.createIndex('name_idx', 'Person', ['name'], 'english', 'soundex')
+
 -- Search with relevance ranking
 CALL neural.fulltext.query('search_idx', 'machine learning', 10)
 YIELD node, score
@@ -101,10 +107,20 @@ CALL neural.fulltext.query('search_idx', '"neural network"', 5)
 -- Boolean search (AND, OR, NOT/-)
 CALL neural.fulltext.query('search_idx', 'deep AND learning -CNN', 10)
 
+-- Fuzzy search (typo tolerance)
+CALL neural.fulltext.fuzzyQuery('search_idx', 'machin lerning', 10)      -- distance=1
+CALL neural.fulltext.fuzzyQuery('search_idx', 'machin lerning', 10, 2)   -- distance=2
+
 -- List/drop indexes
 CALL neural.fulltext.indexes()
 CALL neural.fulltext.dropIndex('search_idx')
 ```
+
+### Languages
+English, Spanish, French, German, Italian, Portuguese, Dutch, Swedish, Norwegian, Danish, Finnish, Russian, Hungarian, Romanian, Turkish, Arabic, Greek, Tamil
+
+### Phonetic Algorithms
+`soundex`, `metaphone`, `double_metaphone`
 
 ---
 

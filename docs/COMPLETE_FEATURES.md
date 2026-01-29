@@ -2,9 +2,9 @@
 
 > Base de datos de grafos nativa en Rust para cargas de trabajo de IA
 
-**Versión**: 0.9.6
+**Versión**: 0.9.7
 **Fecha**: 2026-01-29
-**Estado**: Fase 7 (Paridad Competitiva y Escala) - Sprint 62
+**Estado**: Fase 7 (Paridad Competitiva y Escala) - Sprint 63
 
 ---
 
@@ -97,9 +97,10 @@ neuralgraph/
 │   │   │   ├── metrics.rs        # Prometheus metrics
 │   │   │   │
 │   │   │   ├── full_text_index/  # Búsqueda full-text
-│   │   │   │   ├── mod.rs        # FullTextIndex, SearchResult
-│   │   │   │   ├── config.rs     # FullTextIndexConfig, Language
-│   │   │   │   └── schema.rs     # Analyzer, Schema builder
+│   │   │   │   ├── mod.rs        # FullTextIndex, SearchResult, search_fuzzy
+│   │   │   │   ├── config.rs     # FullTextIndexConfig, Language (18), PhoneticAlgorithm
+│   │   │   │   ├── schema.rs     # Analyzer, Schema builder, language mapping
+│   │   │   │   └── phonetic.rs   # PhoneticTokenFilter (Soundex, Metaphone)
 │   │   │   │
 │   │   │   ├── vector_index/     # Motor vectorial
 │   │   │   │   ├── mod.rs        # Public exports
@@ -342,15 +343,15 @@ MATCH (n) RETURN n
 MATCH (n:Person) RETURN n.name
 
 -- Nodos con propiedades
-MATCH (n {name: "Alice"}) RETURN n
-MATCH (n:Person {age: 30}) RETURN n
+MATCH (n) WHERE n.name = "Alice" RETURN n
+MATCH (n:Person) WHERE n.age = 30 RETURN n
 
 -- Patrones con aristas
 MATCH (a)-[r]->(b) RETURN a, type(r), b
 MATCH (a:Person)-[:KNOWS]->(b:Person) RETURN a.name, b.name
 
 -- Aristas con propiedades
-MATCH (a)-[r:WORKS_AT {role: "Engineer"}]->(b) RETURN a, b
+MATCH (a)-[r:WORKS_AT]->(b) WHERE r.role = "Engineer" RETURN a, b
 
 -- Dirección inversa
 MATCH (a)<-[:MANAGES]-(b) RETURN a.name AS employee, b.name AS manager
@@ -567,7 +568,8 @@ CREATE (n:Person {name: "Alice"})
 CREATE (n:Person:Employee:Manager {name: "Bob", level: 5})
 
 -- Crear arista entre nodos existentes
-MATCH (a:Person {name: "Alice"}), (b:Person {name: "Bob"})
+MATCH (a:Person), (b:Person)
+WHERE a.name = "Alice" AND b.name = "Bob"
 CREATE (a)-[:KNOWS {since: 2020}]->(b)
 
 -- Crear patrón completo
@@ -582,11 +584,13 @@ CREATE (a)-[:KNOWS]->(b)
 
 ```cypher
 -- Eliminar nodo (debe estar desconectado)
-MATCH (n:Person {name: "Alice"})
+MATCH (n:Person)
+WHERE n.name = "Alice"
 DELETE n
 
 -- Eliminar nodo con todas sus aristas (DETACH)
-MATCH (n:Person {name: "Alice"})
+MATCH (n:Person)
+WHERE n.name = "Alice"
 DETACH DELETE n
 
 -- Eliminar arista específica
@@ -603,19 +607,23 @@ DETACH DELETE n
 
 ```cypher
 -- Establecer una propiedad
-MATCH (n:Person {name: "Alice"})
+MATCH (n:Person)
+WHERE n.name = "Alice"
 SET n.age = 31
 
 -- Establecer múltiples propiedades
-MATCH (n:Person {name: "Alice"})
+MATCH (n:Person)
+WHERE n.name = "Alice"
 SET n.age = 31, n.updated = true, n.version = 2
 
 -- Incrementar valor
-MATCH (n:Counter {id: 1})
+MATCH (n:Counter)
+WHERE n.id = 1
 SET n.value = n.value + 1
 
 -- Establecer a null (eliminar propiedad)
-MATCH (n:Person {name: "Alice"})
+MATCH (n:Person)
+WHERE n.name = "Alice"
 SET n.temporary = null
 ```
 
@@ -639,7 +647,8 @@ ON CREATE SET n.created = datetime()
 ON MATCH SET n.updated = datetime()
 
 -- MERGE de aristas
-MATCH (a:Person {name: "Alice"}), (b:Person {name: "Bob"})
+MATCH (a:Person), (b:Person)
+WHERE a.name = "Alice" AND b.name = "Bob"
 MERGE (a)-[:KNOWS]->(b)
 ```
 
@@ -1130,6 +1139,9 @@ NeuralGraphDB incluye búsqueda full-text nativa usando **tantivy** (el equivale
 | **Boolean Queries** | Combinar términos con AND, OR, NOT |
 | **Relevance Ranking** | Ordenamiento por score BM25 |
 | **Persistence** | Índices persistentes en directorio `.fts/` |
+| **Fuzzy Matching** | Tolerancia a errores tipográficos (Levenshtein distance) |
+| **Phonetic Search** | Coincidencia por sonido (Soundex, Metaphone, DoubleMetaphone) |
+| **Multi-idioma** | 18 idiomas soportados para stemming y stop words |
 
 ### 7.3 Procedimientos CALL
 
@@ -1138,6 +1150,12 @@ NeuralGraphDB incluye búsqueda full-text nativa usando **tantivy** (el equivale
 ```cypher
 -- Crear índice sobre una o más propiedades
 CALL neural.fulltext.createIndex('paper_search', 'Paper', ['title', 'abstract'])
+
+-- Crear índice con idioma específico
+CALL neural.fulltext.createIndex('spanish_idx', 'Article', ['titulo', 'contenido'], 'spanish')
+
+-- Crear índice con búsqueda fonética
+CALL neural.fulltext.createIndex('name_idx', 'Person', ['name'], 'english', 'soundex')
 
 -- Resultado:
 -- | result |
@@ -1162,6 +1180,34 @@ RETURN node.title, score
 CALL neural.fulltext.query('paper_search', 'deep AND learning NOT convolutional', 10)
 YIELD node, score
 RETURN node.title, score
+```
+
+#### Búsqueda Fuzzy (Sprint 63)
+
+```cypher
+-- Búsqueda con tolerancia a errores tipográficos
+-- El 4º argumento es la distancia de Levenshtein máxima (default: 1)
+CALL neural.fulltext.fuzzyQuery('paper_search', 'machin lerning', 10, 2)
+YIELD node, score
+RETURN node.title, score
+
+-- Distancia 1: tolera 1 carácter de diferencia (e.g., "machin" → "machine")
+-- Distancia 2: tolera hasta 2 caracteres de diferencia
+```
+
+#### Búsqueda Fonética (Sprint 63)
+
+```cypher
+-- Si el índice tiene phonetic habilitado, la búsqueda por sonido es automática
+-- Crear índice con Soundex
+CALL neural.fulltext.createIndex('name_idx', 'Person', ['name'], 'english', 'soundex')
+
+-- "Smith" coincide con "Smyth", "Smithe", etc.
+CALL neural.fulltext.query('name_idx', 'Smith', 10)
+YIELD node, score
+RETURN node.name, score
+
+-- Algoritmos disponibles: soundex, metaphone, double_metaphone
 ```
 
 #### Listar Índices
@@ -1203,19 +1249,44 @@ CALL neural.fulltext.dropIndex('paper_search')
 pub struct AnalyzerConfig {
     /// Idioma para stemming (default: English)
     pub language: Language,
-    /// Lista de stop words personalizados
-    pub stop_words: Vec<String>,
+    /// Algoritmo fonético (default: None)
+    pub phonetic: PhoneticAlgorithm,
     /// Convertir a minúsculas (default: true)
     pub lowercase: bool,
+    /// Eliminar stop words (default: true)
+    pub remove_stopwords: bool,
+    /// Aplicar stemming (default: true)
+    pub stemming: bool,
 }
 
-// Idiomas soportados
+// 18 idiomas soportados (Sprint 63)
 pub enum Language {
-    English,   // Porter Stemmer
-    Spanish,   // Snowball Spanish
-    French,    // Snowball French
-    German,    // Snowball German
-    // ... y más
+    English,    // Porter Stemmer
+    Spanish,    // Snowball Spanish
+    French,     // Snowball French
+    German,     // Snowball German
+    Italian,    // Snowball Italian
+    Portuguese, // Snowball Portuguese
+    Dutch,      // Snowball Dutch
+    Swedish,    // Snowball Swedish
+    Norwegian,  // Snowball Norwegian
+    Danish,     // Snowball Danish
+    Finnish,    // Snowball Finnish
+    Russian,    // Snowball Russian
+    Hungarian,  // Snowball Hungarian
+    Romanian,   // Snowball Romanian
+    Turkish,    // Snowball Turkish
+    Arabic,     // Snowball Arabic
+    Greek,      // Snowball Greek
+    Tamil,      // Snowball Tamil
+}
+
+// Algoritmos fonéticos (Sprint 63)
+pub enum PhoneticAlgorithm {
+    None,            // Sin fonética
+    Soundex,         // Clásico, bueno para nombres en inglés
+    Metaphone,       // Más preciso que Soundex
+    DoubleMetaphone, // Maneja más casos y palabras no-inglesas
 }
 ```
 
@@ -2235,6 +2306,7 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 | 60 | 0.9.5 | Flash quantization (4-32x memory), distributed vector search |
 | 61 | 0.9.5 | Distributed vector gRPC server, shard coordinator enhancements |
 | 62 | 0.9.6 | Full-text search index (tantivy): stemming, stop words, phrase/boolean queries |
+| 63 | 0.9.7 | Full-text search avanzado: fuzzy matching (Levenshtein), phonetic search (Soundex, Metaphone, DoubleMetaphone), 18 idiomas |
 
 ---
 
@@ -2286,5 +2358,5 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 ---
 
 *Documento generado: 2026-01-29*
-*Versión de NeuralGraphDB: 0.9.5*
-*Sprints completados: 1-62*
+*Versión de NeuralGraphDB: 0.9.7*
+*Sprints completados: 1-63*
