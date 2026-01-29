@@ -2,7 +2,7 @@
 
 > The Graph Database for AI Applications
 
-**Version**: 0.9
+**Version**: 0.9.5
 **Last Updated**: January 2026
 
 ---
@@ -487,6 +487,27 @@ id,label,title,embedding
 2,Document,Machine Learning Basics,"[0.15, 0.25, 0.28, ...]"
 ```
 
+### Vector Quantization
+
+Reduce memory usage with quantization (4x to 32x savings):
+
+| Method | Memory Savings | Precision | Best For |
+|--------|----------------|-----------|----------|
+| `None` | 0% | 100% | Production, precision critical |
+| `Int8` | 75% (4x) | ~99% | Balance of memory and precision |
+| `Binary` | 97% (32x) | ~90% | Very large datasets |
+
+### Distributed Vector Search
+
+For large-scale deployments, NeuralGraphDB supports distributed vector search across multiple shards:
+
+- **Scatter-gather algorithm**: Query is sent to all shards in parallel
+- **Automatic result merging**: Top-k results are merged efficiently
+- **Replica failover**: If a shard is unhealthy, queries route to replicas
+- **Result caching**: Frequently-used queries are cached with configurable TTL
+
+The distributed search is transparent - you use the same `neural.search()` API whether running on a single node or a cluster.
+
 ---
 
 ## 8. Graph Analytics
@@ -660,6 +681,22 @@ When connected to a cluster, writes are automatically routed to the current lead
 - If you send a write to a follower, it redirects to the leader
 - Reads can be served by any node
 - Leader election is automatic if the leader fails
+
+### Prometheus Metrics
+
+NeuralGraphDB exposes metrics for monitoring cluster and vector search performance:
+
+**Cluster Metrics:**
+- `neuralgraph_raft_term` - Current Raft term
+- `neuralgraph_raft_log_index` - Latest log index
+- `neuralgraph_cluster_node_count` - Number of nodes in cluster
+- `neuralgraph_cluster_leader` - Current leader node ID
+
+**Vector Search Metrics:**
+- `neuralgraph_vector_search_duration_seconds` - Search latency histogram
+- `neuralgraph_vector_search_total` - Total searches
+- `neuralgraph_vector_cache_hits_total` - Cache hit count
+- `neuralgraph_vector_cache_misses_total` - Cache miss count
 
 ---
 

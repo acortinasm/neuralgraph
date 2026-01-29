@@ -1,4 +1,4 @@
-# NeuralGraphDB Quick Reference
+# NeuralGraphDB Quick Reference (v0.9.5)
 
 ## Shell Commands
 
@@ -94,6 +94,13 @@ RETURN node.title, score
 
 -- Metrics: 'cosine', 'euclidean', 'dot_product'
 ```
+
+### Quantization (Memory Savings)
+| Method | Savings | Precision |
+|--------|---------|-----------|
+| None   | 0%      | 100%      |
+| Int8   | 75% (4x)| ~99%      |
+| Binary | 97% (32x)| ~90%     |
 
 ---
 
@@ -192,6 +199,18 @@ source,target,type
 neuralgraph                      # Interactive shell
 neuralgraph serve 3000           # REST API
 neuralgraph serve-flight 50051   # Arrow Flight (high-performance)
+neuralgraph serve-raft 1 50052   # Raft cluster node
+```
+
+---
+
+## Cluster Commands
+
+```bash
+neuralgraph cluster info <addr>           # View cluster info
+neuralgraph cluster health <addr>         # Check node health
+neuralgraph cluster add <addr> <id> <new> # Add node to cluster
+neuralgraph cluster remove <addr> <id>    # Remove node from cluster
 ```
 
 ---
