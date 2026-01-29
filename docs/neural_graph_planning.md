@@ -104,7 +104,7 @@ Escalabilidad más allá de un solo nodo.
 | **Sprint 50** | Transaction Manager | ACID (Begin, Commit, Rollback). | ✅ | Infra |
 | **Sprint 51** | MVCC | Snapshot Isolation. | ✅ | Infra |
 | **Sprint 52** | **Distributed Raft** | Replicación Multi-nodo con consenso. | ✅ | Infra |
-| **Sprint 53** | **Cluster Management** | Node Discovery, Leader Routing, Health Checks. | 📅 | Infra |
+| **Sprint 53** | **Cluster Management** | Node Discovery, Leader Routing, Health Checks. | ✅ | Infra |
 | **Sprint 54** | **Time-Travel Queries** | `AT TIME` para consultas históricas sobre MVCC. | ✅ | Infra |
 | **Sprint 55** | **Graph Sharding** | Particionamiento vertex-cut/edge-cut para escala horizontal. | ✅ | Infra |
 | **Sprint 56** | **Embedding Metadata** | Modelo origen, múltiples métricas (coseno, euclidiana, dot). | ✅ | Infra |
