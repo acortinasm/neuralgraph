@@ -68,6 +68,8 @@ pub struct AnalyzerConfig {
     pub stemming: bool,
     /// Language for stemming and stop words (default: English)
     pub language: Language,
+    /// Phonetic encoding algorithm (default: None)
+    pub phonetic: PhoneticAlgorithm,
 }
 
 impl Default for AnalyzerConfig {
@@ -77,6 +79,7 @@ impl Default for AnalyzerConfig {
             remove_stopwords: true,
             stemming: true,
             language: Language::English,
+            phonetic: PhoneticAlgorithm::None,
         }
     }
 }
@@ -104,20 +107,129 @@ impl AnalyzerConfig {
         self.language = language;
         self
     }
+
+    /// Sets the phonetic encoding algorithm.
+    pub fn with_phonetic(mut self, phonetic: PhoneticAlgorithm) -> Self {
+        self.phonetic = phonetic;
+        self
+    }
 }
 
 /// Supported languages for text analysis.
+///
+/// These languages are supported by tantivy's Stemmer and StopWordFilter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum Language {
     #[default]
     English,
-    // Future: Spanish, French, German, etc.
+    Spanish,
+    French,
+    German,
+    Italian,
+    Portuguese,
+    Dutch,
+    Swedish,
+    Norwegian,
+    Danish,
+    Finnish,
+    Russian,
+    Hungarian,
+    Romanian,
+    Turkish,
+    Arabic,
+    Greek,
+    Tamil,
+}
+
+impl Language {
+    /// Parses a language name from a string (case-insensitive).
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "english" | "en" => Some(Language::English),
+            "spanish" | "es" => Some(Language::Spanish),
+            "french" | "fr" => Some(Language::French),
+            "german" | "de" => Some(Language::German),
+            "italian" | "it" => Some(Language::Italian),
+            "portuguese" | "pt" => Some(Language::Portuguese),
+            "dutch" | "nl" => Some(Language::Dutch),
+            "swedish" | "sv" => Some(Language::Swedish),
+            "norwegian" | "no" => Some(Language::Norwegian),
+            "danish" | "da" => Some(Language::Danish),
+            "finnish" | "fi" => Some(Language::Finnish),
+            "russian" | "ru" => Some(Language::Russian),
+            "hungarian" | "hu" => Some(Language::Hungarian),
+            "romanian" | "ro" => Some(Language::Romanian),
+            "turkish" | "tr" => Some(Language::Turkish),
+            "arabic" | "ar" => Some(Language::Arabic),
+            "greek" | "el" => Some(Language::Greek),
+            "tamil" | "ta" => Some(Language::Tamil),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for Language {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Language::English => write!(f, "english"),
+            Language::Spanish => write!(f, "spanish"),
+            Language::French => write!(f, "french"),
+            Language::German => write!(f, "german"),
+            Language::Italian => write!(f, "italian"),
+            Language::Portuguese => write!(f, "portuguese"),
+            Language::Dutch => write!(f, "dutch"),
+            Language::Swedish => write!(f, "swedish"),
+            Language::Norwegian => write!(f, "norwegian"),
+            Language::Danish => write!(f, "danish"),
+            Language::Finnish => write!(f, "finnish"),
+            Language::Russian => write!(f, "russian"),
+            Language::Hungarian => write!(f, "hungarian"),
+            Language::Romanian => write!(f, "romanian"),
+            Language::Turkish => write!(f, "turkish"),
+            Language::Arabic => write!(f, "arabic"),
+            Language::Greek => write!(f, "greek"),
+            Language::Tamil => write!(f, "tamil"),
+        }
+    }
+}
+
+/// Phonetic encoding algorithm for sound-alike matching.
+///
+/// Phonetic algorithms convert words to codes based on their pronunciation,
+/// allowing searches to match words that sound similar but are spelled differently.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum PhoneticAlgorithm {
+    /// No phonetic encoding (default)
+    #[default]
+    None,
+    /// Soundex - classic phonetic algorithm, good for English names
+    Soundex,
+    /// Metaphone - more accurate than Soundex for English words
+    Metaphone,
+    /// Double Metaphone - handles more languages and edge cases
+    DoubleMetaphone,
+}
+
+impl PhoneticAlgorithm {
+    /// Parses a phonetic algorithm name from a string (case-insensitive).
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "none" | "" => Some(PhoneticAlgorithm::None),
+            "soundex" => Some(PhoneticAlgorithm::Soundex),
+            "metaphone" => Some(PhoneticAlgorithm::Metaphone),
+            "doublemetaphone" | "double_metaphone" => Some(PhoneticAlgorithm::DoubleMetaphone),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for PhoneticAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PhoneticAlgorithm::None => write!(f, "none"),
+            PhoneticAlgorithm::Soundex => write!(f, "soundex"),
+            PhoneticAlgorithm::Metaphone => write!(f, "metaphone"),
+            PhoneticAlgorithm::DoubleMetaphone => write!(f, "doublemetaphone"),
         }
     }
 }
@@ -136,6 +248,7 @@ mod tests {
         assert_eq!(config.properties, vec!["name", "bio"]);
         assert!(config.analyzer.lowercase);
         assert!(config.analyzer.stemming);
+        assert_eq!(config.analyzer.phonetic, PhoneticAlgorithm::None);
     }
 
     #[test]
@@ -147,5 +260,46 @@ mod tests {
         assert!(analyzer.lowercase);
         assert!(!analyzer.remove_stopwords);
         assert!(!analyzer.stemming);
+    }
+
+    #[test]
+    fn test_analyzer_with_phonetic() {
+        let analyzer = AnalyzerConfig::new()
+            .with_phonetic(PhoneticAlgorithm::Soundex);
+
+        assert_eq!(analyzer.phonetic, PhoneticAlgorithm::Soundex);
+    }
+
+    #[test]
+    fn test_language_from_str() {
+        assert_eq!(Language::from_str("english"), Some(Language::English));
+        assert_eq!(Language::from_str("Spanish"), Some(Language::Spanish));
+        assert_eq!(Language::from_str("fr"), Some(Language::French));
+        assert_eq!(Language::from_str("DE"), Some(Language::German));
+        assert_eq!(Language::from_str("unknown"), None);
+    }
+
+    #[test]
+    fn test_phonetic_from_str() {
+        assert_eq!(PhoneticAlgorithm::from_str("none"), Some(PhoneticAlgorithm::None));
+        assert_eq!(PhoneticAlgorithm::from_str("soundex"), Some(PhoneticAlgorithm::Soundex));
+        assert_eq!(PhoneticAlgorithm::from_str("metaphone"), Some(PhoneticAlgorithm::Metaphone));
+        assert_eq!(PhoneticAlgorithm::from_str("doublemetaphone"), Some(PhoneticAlgorithm::DoubleMetaphone));
+        assert_eq!(PhoneticAlgorithm::from_str("invalid"), None);
+    }
+
+    #[test]
+    fn test_language_display() {
+        assert_eq!(format!("{}", Language::English), "english");
+        assert_eq!(format!("{}", Language::Spanish), "spanish");
+        assert_eq!(format!("{}", Language::Tamil), "tamil");
+    }
+
+    #[test]
+    fn test_analyzer_with_language() {
+        let analyzer = AnalyzerConfig::new()
+            .with_language(Language::Spanish);
+
+        assert_eq!(analyzer.language, Language::Spanish);
     }
 }

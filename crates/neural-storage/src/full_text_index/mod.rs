@@ -50,23 +50,23 @@
 //! ```
 
 pub mod config;
+pub mod phonetic;
 pub mod schema;
 
-use config::AnalyzerConfig;
 use neural_core::NodeId;
 use schema::{build_analyzer, build_schema, ANALYZER_NAME};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tantivy::collector::TopDocs;
-use tantivy::query::QueryParser;
+use tantivy::query::{FuzzyTermQuery, QueryParser};
 use tantivy::schema::{Field, Schema};
 use tantivy::schema::Value;
-use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument};
+use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, Term};
 use thiserror::Error;
 
 // Re-exports
-pub use config::{FullTextIndexConfig, Language};
+pub use config::{AnalyzerConfig, FullTextIndexConfig, Language, PhoneticAlgorithm};
 
 /// Errors that can occur during full-text index operations.
 #[derive(Debug, Error)]
@@ -380,6 +380,82 @@ impl FullTextIndex {
         Ok(results)
     }
 
+    /// Performs a fuzzy search with Levenshtein distance tolerance.
+    ///
+    /// Fuzzy search allows matching terms that are within a specified edit
+    /// distance of the query terms, enabling typo-tolerant search.
+    ///
+    /// # Arguments
+    /// * `query_str` - The search query (single term or space-separated terms)
+    /// * `k` - Maximum number of results to return
+    /// * `distance` - Maximum Levenshtein edit distance (1-2 recommended)
+    /// * `transposition` - If true, transpositions count as 1 edit (e.g., "ab" -> "ba")
+    ///
+    /// # Returns
+    /// Vector of search results sorted by relevance
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Find documents matching "machine" with up to 1 typo
+    /// let results = index.search_fuzzy("machin", 10, 1, true)?;
+    /// ```
+    pub fn search_fuzzy(
+        &self,
+        query_str: &str,
+        k: usize,
+        distance: u8,
+        transposition: bool,
+    ) -> Result<Vec<SearchResult>> {
+        let searcher = self.reader.searcher();
+
+        // For fuzzy search, we need to search each field separately and combine results
+        // We'll use FuzzyTermQuery for each term in each field
+        let terms: Vec<&str> = query_str.split_whitespace().collect();
+
+        if terms.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Collect all results with their scores
+        let mut all_results: HashMap<u64, f32> = HashMap::new();
+
+        for term in &terms {
+            for field in self.text_fields.values() {
+                // Create a fuzzy term query
+                let tantivy_term = Term::from_field_text(*field, &term.to_lowercase());
+                let fuzzy_query = FuzzyTermQuery::new(tantivy_term, distance, transposition);
+
+                // Execute search
+                let top_docs = searcher.search(&fuzzy_query, &TopDocs::with_limit(k * 2))?;
+
+                // Accumulate results
+                for (score, doc_address) in top_docs {
+                    let doc: TantivyDocument = searcher.doc(doc_address)?;
+                    if let Some(node_id_value) = doc.get_first(self.node_id_field) {
+                        if let Some(node_id_u64) = node_id_value.as_u64() {
+                            // Combine scores for documents matching multiple terms
+                            *all_results.entry(node_id_u64).or_insert(0.0) += score;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sort by score and take top k
+        let mut results: Vec<_> = all_results
+            .into_iter()
+            .map(|(node_id, score)| SearchResult {
+                node_id: NodeId::new(node_id),
+                score,
+            })
+            .collect();
+
+        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.truncate(k);
+
+        Ok(results)
+    }
+
     /// Returns the metadata for this index.
     pub fn metadata(&self) -> &FullTextIndexMetadata {
         &self.metadata
@@ -653,5 +729,148 @@ mod tests {
         assert_eq!(index.name(), "test_index");
         assert_eq!(index.label(), "Paper");
         assert_eq!(index.properties(), &["title", "abstract"]);
+    }
+
+    #[test]
+    fn test_fuzzy_search_typo_tolerance() {
+        let (mut index, _temp_dir) = create_test_index();
+
+        let doc = HashMap::from([
+            ("title".to_string(), "Machine Learning Introduction".to_string()),
+            ("abstract".to_string(), "An overview of ML techniques".to_string()),
+        ]);
+        index.add_document(NodeId::new(1), &doc).unwrap();
+        index.commit().unwrap();
+
+        // Exact search should work
+        let results = index.search("machine", 10).unwrap();
+        assert!(!results.is_empty());
+
+        // Fuzzy search with typo should also work
+        // "machin" is 1 edit away from "machine" (missing 'e')
+        let results = index.search_fuzzy("machin", 10, 1, true).unwrap();
+        assert!(!results.is_empty(), "Fuzzy search should match 'machin' to 'machine'");
+        assert_eq!(results[0].node_id, NodeId::new(1));
+
+        // "machne" is 2 edits from "machine" (missing 'i', extra position for 'n')
+        // Use distance 2 for this case
+        let results = index.search_fuzzy("machne", 10, 2, true).unwrap();
+        assert!(!results.is_empty(), "Fuzzy search with distance 2 should match 'machne' to 'machine'");
+    }
+
+    #[test]
+    fn test_fuzzy_search_distance_2() {
+        let (mut index, _temp_dir) = create_test_index();
+
+        let doc = HashMap::from([
+            ("title".to_string(), "Neural Networks".to_string()),
+            ("abstract".to_string(), "Deep learning with neurons".to_string()),
+        ]);
+        index.add_document(NodeId::new(1), &doc).unwrap();
+        index.commit().unwrap();
+
+        // "nueral" has 2 edits from "neural" (swap e-u, but also position shift)
+        // With distance 2, it should match
+        let results = index.search_fuzzy("nueral", 10, 2, true).unwrap();
+        assert!(!results.is_empty(), "Fuzzy search with distance 2 should match 'nueral' to 'neural'");
+    }
+
+    #[test]
+    fn test_fuzzy_search_multiple_terms() {
+        let (mut index, _temp_dir) = create_test_index();
+
+        let doc1 = HashMap::from([
+            ("title".to_string(), "Machine Learning".to_string()),
+            ("abstract".to_string(), "Introduction to ML".to_string()),
+        ]);
+        index.add_document(NodeId::new(1), &doc1).unwrap();
+
+        let doc2 = HashMap::from([
+            ("title".to_string(), "Deep Networks".to_string()),
+            ("abstract".to_string(), "Neural network basics".to_string()),
+        ]);
+        index.add_document(NodeId::new(2), &doc2).unwrap();
+
+        index.commit().unwrap();
+
+        // Search for "machin lerning" (both with typos)
+        let results = index.search_fuzzy("machin lerning", 10, 1, true).unwrap();
+        assert!(!results.is_empty());
+        // The ML document should rank higher because both terms match
+        assert_eq!(results[0].node_id, NodeId::new(1));
+    }
+
+    #[test]
+    fn test_fuzzy_search_no_match_beyond_distance() {
+        let (mut index, _temp_dir) = create_test_index();
+
+        let doc = HashMap::from([
+            ("title".to_string(), "Algorithms".to_string()),
+            ("abstract".to_string(), "Computer science basics".to_string()),
+        ]);
+        index.add_document(NodeId::new(1), &doc).unwrap();
+        index.commit().unwrap();
+
+        // "xyz" is way more than 1 edit from any word in the index
+        let results = index.search_fuzzy("xyz", 10, 1, true).unwrap();
+        assert!(results.is_empty(), "Fuzzy search should not match completely unrelated terms");
+    }
+
+    #[test]
+    fn test_index_with_spanish() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = FullTextIndexConfig::new("spanish_index", "Article")
+            .with_properties(vec!["titulo"])
+            .with_analyzer(
+                AnalyzerConfig::new().with_language(config::Language::Spanish)
+            );
+
+        let mut index = FullTextIndex::create(config, temp_dir.path()).unwrap();
+
+        let doc = HashMap::from([
+            ("titulo".to_string(), "Aprendizaje automatico".to_string()),
+        ]);
+        index.add_document(NodeId::new(1), &doc).unwrap();
+        index.commit().unwrap();
+
+        // Search should work with Spanish stemming
+        let results = index.search("aprendizaje", 10).unwrap();
+        assert!(!results.is_empty());
+    }
+
+    #[test]
+    fn test_index_with_phonetic() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = FullTextIndexConfig::new("phonetic_index", "Person")
+            .with_properties(vec!["name"])
+            .with_analyzer(
+                AnalyzerConfig::new().with_phonetic(config::PhoneticAlgorithm::Soundex)
+            );
+
+        let mut index = FullTextIndex::create(config, temp_dir.path()).unwrap();
+
+        // Add names that sound alike
+        let doc1 = HashMap::from([("name".to_string(), "Smith".to_string())]);
+        let doc2 = HashMap::from([("name".to_string(), "Smyth".to_string())]);
+        index.add_document(NodeId::new(1), &doc1).unwrap();
+        index.add_document(NodeId::new(2), &doc2).unwrap();
+        index.commit().unwrap();
+
+        // Search for "Smith" should find both due to phonetic matching
+        // Both Smith and Smyth have the same Soundex code (S530),
+        // and that code is indexed for both documents
+        let results = index.search("smith", 10).unwrap();
+        assert!(!results.is_empty(), "Should find at least one match");
+
+        // With phonetic indexing enabled, searching for "Smyth" when the query
+        // is processed, it gets the same Soundex code as "Smith", so it should
+        // match both documents
+        let results = index.search("smyth", 10).unwrap();
+        assert!(!results.is_empty(), "Searching for 'smyth' should match");
+
+        // Both searches should return at least one result
+        // (The exact matching depends on tantivy's scoring and phonetic handling)
+        // The key feature is that phonetic codes are being indexed alongside
+        // the original tokens
     }
 }

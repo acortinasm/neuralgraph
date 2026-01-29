@@ -59,6 +59,9 @@ prometheus = { version = "0.13", optional = true }
 # Full-text search (Sprint 62)
 tantivy = "0.22"
 
+# Phonetic encoding (Sprint 63)
+rphonetic = "3.0"
+
 [features]
 default = []
 metrics = ["prometheus"]

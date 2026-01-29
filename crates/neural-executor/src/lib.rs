@@ -308,9 +308,11 @@ pub fn execute_statement_struct(
                 }
                 "neural.fulltext.createIndex" => {
                     // CALL neural.fulltext.createIndex('IndexName', 'Label', ['prop1', 'prop2'])
-                    if call.args.len() != 3 {
+                    // CALL neural.fulltext.createIndex('IndexName', 'Label', ['props'], 'language')
+                    // CALL neural.fulltext.createIndex('IndexName', 'Label', ['props'], 'language', 'phonetic')
+                    if call.args.len() < 3 || call.args.len() > 5 {
                         return Err(ExecutionError::ExecutionError(
-                            "neural.fulltext.createIndex requires 3 arguments: name, label, properties".into()
+                            "neural.fulltext.createIndex requires 3-5 arguments: name, label, properties, [language], [phonetic]".into()
                         ));
                     }
 
@@ -347,12 +349,53 @@ pub fn execute_statement_struct(
                         )),
                     };
 
+                    // Extract optional language (4th argument)
+                    let language = if call.args.len() >= 4 {
+                        match &call.args[3] {
+                            neural_parser::Expression::Literal(neural_parser::Literal::String(s)) => {
+                                neural_storage::full_text_index::Language::from_str(s)
+                            }
+                            _ => return Err(ExecutionError::ExecutionError(
+                                "Language must be a string literal".into()
+                            )),
+                        }
+                    } else {
+                        None
+                    };
+
+                    // Extract optional phonetic algorithm (5th argument)
+                    let phonetic = if call.args.len() >= 5 {
+                        match &call.args[4] {
+                            neural_parser::Expression::Literal(neural_parser::Literal::String(s)) => {
+                                neural_storage::full_text_index::PhoneticAlgorithm::from_str(s)
+                            }
+                            _ => return Err(ExecutionError::ExecutionError(
+                                "Phonetic algorithm must be a string literal".into()
+                            )),
+                        }
+                    } else {
+                        None
+                    };
+
                     // Create the index
-                    match store.create_fulltext_index(&index_name, &label, properties) {
-                        Ok(()) => Ok(StatementResult::Call {
-                            procedure: full_name,
-                            result: format!("Created full-text index '{}' on :{}({:?})", index_name, label, store.fulltext_index_metadata(&index_name).map(|m| &m.properties)),
-                        }),
+                    match store.create_fulltext_index_with_config(&index_name, &label, properties, language, phonetic) {
+                        Ok(()) => {
+                            let mut result_parts = vec![
+                                format!("Created full-text index '{}' on :{}({:?})",
+                                    index_name, label,
+                                    store.fulltext_index_metadata(&index_name).map(|m| &m.properties))
+                            ];
+                            if let Some(lang) = language {
+                                result_parts.push(format!("language: {}", lang));
+                            }
+                            if let Some(phon) = phonetic {
+                                result_parts.push(format!("phonetic: {}", phon));
+                            }
+                            Ok(StatementResult::Call {
+                                procedure: full_name,
+                                result: result_parts.join(", "),
+                            })
+                        }
                         Err(e) => Err(ExecutionError::ExecutionError(format!("Failed to create index: {}", e))),
                     }
                 }
@@ -401,6 +444,67 @@ pub fn execute_statement_struct(
                             })
                         }
                         Err(e) => Err(ExecutionError::ExecutionError(format!("Search failed: {}", e))),
+                    }
+                }
+                "neural.fulltext.fuzzyQuery" => {
+                    // CALL neural.fulltext.fuzzyQuery('IndexName', 'search terms', 10)
+                    // CALL neural.fulltext.fuzzyQuery('IndexName', 'search terms', 10, 2)
+                    // 4th arg = max edit distance (default: 1)
+                    if call.args.len() < 3 || call.args.len() > 4 {
+                        return Err(ExecutionError::ExecutionError(
+                            "neural.fulltext.fuzzyQuery requires 3-4 arguments: index_name, query, k, [distance]".into()
+                        ));
+                    }
+
+                    // Extract index name
+                    let index_name = match &call.args[0] {
+                        neural_parser::Expression::Literal(neural_parser::Literal::String(s)) => s.clone(),
+                        _ => return Err(ExecutionError::ExecutionError(
+                            "Index name must be a string literal".into()
+                        )),
+                    };
+
+                    // Extract query string
+                    let query_str = match &call.args[1] {
+                        neural_parser::Expression::Literal(neural_parser::Literal::String(s)) => s.clone(),
+                        _ => return Err(ExecutionError::ExecutionError(
+                            "Query must be a string literal".into()
+                        )),
+                    };
+
+                    // Extract k (limit)
+                    let k = match &call.args[2] {
+                        neural_parser::Expression::Literal(neural_parser::Literal::Int(n)) => *n as usize,
+                        _ => return Err(ExecutionError::ExecutionError(
+                            "k must be an integer".into()
+                        )),
+                    };
+
+                    // Extract optional distance (4th argument), default to 1
+                    let distance = if call.args.len() >= 4 {
+                        match &call.args[3] {
+                            neural_parser::Expression::Literal(neural_parser::Literal::Int(n)) => *n as u8,
+                            _ => return Err(ExecutionError::ExecutionError(
+                                "Distance must be an integer".into()
+                            )),
+                        }
+                    } else {
+                        1u8 // Default distance
+                    };
+
+                    // Execute fuzzy search
+                    match store.fulltext_search_fuzzy(&index_name, &query_str, k, distance) {
+                        Ok(results) => {
+                            let result_str = results.iter()
+                                .map(|(node_id, score)| format!("  Node {}: {:.4}", node_id.as_u64(), score))
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            Ok(StatementResult::Call {
+                                procedure: full_name,
+                                result: format!("Found {} fuzzy results (distance={}):\n{}", results.len(), distance, result_str),
+                            })
+                        }
+                        Err(e) => Err(ExecutionError::ExecutionError(format!("Fuzzy search failed: {}", e))),
                     }
                 }
                 "neural.fulltext.dropIndex" => {

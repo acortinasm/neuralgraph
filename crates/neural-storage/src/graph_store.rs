@@ -5,7 +5,10 @@
 
 use crate::{CsrMatrix, CsrStats, VersionedPropertyStore, VectorIndex};
 use crate::csc::CscMatrix;
-use crate::full_text_index::{FullTextIndex, FullTextIndexConfig, FullTextIndexMetadata, FullTextError};
+use crate::full_text_index::{
+    AnalyzerConfig, FullTextIndex, FullTextIndexConfig, FullTextIndexMetadata,
+    FullTextError, Language, PhoneticAlgorithm,
+};
 use crate::wal::{LogEntry, TransactionId, WalWriter};
 use crate::transaction::TransactionManager;
 use neural_core::{Edge, Graph, Label, NodeId, PropertyValue};
@@ -1092,6 +1095,49 @@ impl GraphStore {
         label: &str,
         properties: Vec<&str>,
     ) -> Result<(), FullTextError> {
+        self.create_fulltext_index_with_config(name, label, properties, None, None)
+    }
+
+    /// Creates a new full-text index with language and phonetic options.
+    ///
+    /// # Arguments
+    /// * `name` - Unique name for the index
+    /// * `label` - Node label to index
+    /// * `properties` - Properties to include in the index
+    /// * `language` - Optional language for stemming (default: English)
+    /// * `phonetic` - Optional phonetic algorithm for sound-alike matching
+    ///
+    /// # Returns
+    /// Ok(()) on success, Err if index already exists or creation fails
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Create index with Spanish language support
+    /// store.create_fulltext_index_with_config(
+    ///     "spanish_idx",
+    ///     "Article",
+    ///     vec!["titulo"],
+    ///     Some(Language::Spanish),
+    ///     None,
+    /// )?;
+    ///
+    /// // Create index with phonetic matching
+    /// store.create_fulltext_index_with_config(
+    ///     "name_idx",
+    ///     "Person",
+    ///     vec!["name"],
+    ///     None,
+    ///     Some(PhoneticAlgorithm::Soundex),
+    /// )?;
+    /// ```
+    pub fn create_fulltext_index_with_config(
+        &mut self,
+        name: &str,
+        label: &str,
+        properties: Vec<&str>,
+        language: Option<Language>,
+        phonetic: Option<PhoneticAlgorithm>,
+    ) -> Result<(), FullTextError> {
         if self.full_text_indexes.contains_key(name) {
             return Err(FullTextError::IndexExists(name.to_string()));
         }
@@ -1099,9 +1145,19 @@ impl GraphStore {
         // Get base path for index storage
         let base_path = self.path.clone().unwrap_or_else(|| PathBuf::from("."));
 
+        // Create analyzer config with optional language and phonetic
+        let mut analyzer = AnalyzerConfig::new();
+        if let Some(lang) = language {
+            analyzer = analyzer.with_language(lang);
+        }
+        if let Some(phon) = phonetic {
+            analyzer = analyzer.with_phonetic(phon);
+        }
+
         // Create config
         let config = FullTextIndexConfig::new(name, label)
-            .with_properties(properties.iter().map(|s| s.to_string()).collect());
+            .with_properties(properties.iter().map(|s| s.to_string()).collect())
+            .with_analyzer(analyzer);
 
         // Create the index
         let mut ft_index = FullTextIndex::create(config.clone(), &base_path)?;
@@ -1155,6 +1211,40 @@ impl GraphStore {
             .ok_or_else(|| FullTextError::IndexNotFound(index_name.to_string()))?;
 
         let results = index.search(query, k)?;
+        Ok(results.into_iter().map(|r| (r.node_id, r.score)).collect())
+    }
+
+    /// Performs a fuzzy full-text search with typo tolerance.
+    ///
+    /// Fuzzy search uses Levenshtein distance to match terms that are
+    /// within a specified edit distance of the query terms.
+    ///
+    /// # Arguments
+    /// * `index_name` - Name of the index to search
+    /// * `query` - Search query
+    /// * `k` - Maximum number of results
+    /// * `distance` - Maximum edit distance (1-2 recommended)
+    ///
+    /// # Returns
+    /// Vector of (NodeId, score) pairs sorted by relevance
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Find documents matching "machine" with up to 1 typo
+    /// let results = store.fulltext_search_fuzzy("paper_idx", "machin", 10, 1)?;
+    /// ```
+    pub fn fulltext_search_fuzzy(
+        &self,
+        index_name: &str,
+        query: &str,
+        k: usize,
+        distance: u8,
+    ) -> Result<Vec<(NodeId, f32)>, FullTextError> {
+        let index = self.full_text_indexes
+            .get(index_name)
+            .ok_or_else(|| FullTextError::IndexNotFound(index_name.to_string()))?;
+
+        let results = index.search_fuzzy(query, k, distance, true)?;
         Ok(results.into_iter().map(|r| (r.node_id, r.score)).collect())
     }
 
