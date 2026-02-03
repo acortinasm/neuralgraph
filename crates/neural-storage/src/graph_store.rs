@@ -544,6 +544,72 @@ impl GraphStore {
         self.graph.validate()
     }
 
+    /// Initializes fields that are skipped during serialization after loading.
+    ///
+    /// This method is called after deserializing a GraphStore from binary format
+    /// to rebuild the reverse graph index and other runtime state.
+    pub fn post_load_init(&mut self) {
+        // Rebuild reverse graph (CSC) from CSR for efficient incoming edge queries
+        self.reverse_graph = CscMatrix::from_csr(&self.graph);
+
+        // Initialize transaction manager (skipped during serialization)
+        self.transaction_manager = TransactionManager::new();
+
+        // Rebuild label index from versioned_labels to ensure consistency
+        self.rebuild_label_index();
+
+        // Rebuild full-text indexes from metadata
+        if let Err(e) = self.rebuild_fulltext_indexes() {
+            eprintln!("Warning: Failed to rebuild full-text indexes: {}", e);
+        }
+    }
+
+    /// Rebuilds the label index from versioned_labels.
+    ///
+    /// This ensures the label_index is consistent with the actual label data
+    /// stored in versioned_labels, which is the authoritative source.
+    fn rebuild_label_index(&mut self) {
+        // Clear the existing label index
+        self.label_index = LabelIndex::new();
+
+        // Iterate through all nodes and rebuild the index
+        let total_nodes = self.node_count();
+        for i in 0..total_nodes {
+            let node_id = NodeId::new(i as u64);
+            // Get the label from versioned_labels (the authoritative source)
+            if let Some(label) = self.versioned_labels.get(node_id, "_label", MAX_SNAPSHOT_ID) {
+                if let Some(label_str) = label.as_str() {
+                    self.label_index.add(node_id, label_str);
+                }
+            }
+        }
+
+        // Finalize the index for binary search
+        self.label_index.finalize();
+    }
+
+    /// Creates a snapshot of the current state for non-blocking persistence.
+    ///
+    /// This operation clones the serializable state and should be called under
+    /// a read lock. The returned snapshot can then be saved without holding
+    /// any locks on the store.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use neural_storage::GraphSnapshot;
+    ///
+    /// let snapshot = {
+    ///     let store = state.store.read().unwrap();
+    ///     store.snapshot()
+    /// };
+    /// // Lock released - save happens without blocking
+    /// snapshot.save_atomic(&path)?;
+    /// ```
+    pub fn snapshot(&self) -> crate::persistence::GraphSnapshot {
+        crate::persistence::GraphSnapshot::from_store(self)
+    }
+
     /// Creates a new empty graph store.
     pub fn new_in_memory() -> Self {
         Self {
@@ -1866,6 +1932,26 @@ impl GraphStore {
     /// Returns the current timestamp index (for debugging/introspection).
     pub fn timestamp_index(&self) -> &TimestampIndex {
         &self.timestamp_index
+    }
+
+    /// Returns the versioned labels store.
+    pub fn versioned_labels(&self) -> &VersionedPropertyStore {
+        &self.versioned_labels
+    }
+
+    /// Returns the count of dynamically created nodes.
+    pub fn dynamic_node_count(&self) -> usize {
+        self.dynamic_node_count
+    }
+
+    /// Returns the current transaction ID counter.
+    pub fn current_tx_id(&self) -> TransactionId {
+        self.current_tx_id
+    }
+
+    /// Returns the full-text index metadata (for persistence).
+    pub fn full_text_metadata(&self) -> &HashMap<String, FullTextIndexMetadata> {
+        &self.full_text_metadata
     }
 
     // =========================================================================
