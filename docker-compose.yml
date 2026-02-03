@@ -17,6 +17,9 @@ services:
     image: neuralgraph:0.1.0
     stdin_open: true
     tty: true
+    command: ["serve", "3000"]
+    ports:
+      - "3000:3000"
     volumes:
       # Mount local data directory for CSV files
       - ./data:/data

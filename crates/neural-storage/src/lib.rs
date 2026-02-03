@@ -45,7 +45,8 @@ pub use full_text_index::{
     FullTextIndex, FullTextIndexConfig, FullTextIndexMetadata, FullTextError,
     SearchResult as FullTextSearchResult, Language as FullTextLanguage,
 };
-// pub use persistence::Persistence; // Removed as it doesn't exist
+pub use persistence::{BackupConfig, GraphSnapshot, PersistenceError};
+pub use graph_store::{EdgeTypeIndex, LabelIndex, PropertyIndex, TimestampIndex};
 
 #[cfg(test)]
 mod tests {

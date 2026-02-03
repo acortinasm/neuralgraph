@@ -4,7 +4,7 @@
 
 **Versión**: 0.9.8
 **Fecha**: 2026-01-29
-**Estado**: Fase 7 (Paridad Competitiva y Escala) - Sprint 64
+**Estado**: Fase 7 (Paridad Competitiva y Escala) - Sprint 65
 
 ---
 
@@ -2078,6 +2078,7 @@ ORDER BY size DESC
 | `/api/search` | POST | Búsqueda texto | `{"query": "...", "limit": 10}` |
 | `/api/similar/{id}` | GET | Nodos similares | - |
 | `/api/bulk-load` | POST | Carga masiva CSV | `{"nodes_path": "...", "edges_path": "..."}` |
+| `/api/schema` | GET | Schema del grafo (Sprint 65) | - |
 
 **Ejemplo - Ejecutar Query:**
 
@@ -2156,6 +2157,68 @@ df = table.to_pandas()
 | `BatchAdd` | entries[] | added_count, failed_count |
 | `GetStats` | - | vector_count, dimension, memory |
 | `HealthCheck` | shard_id | healthy, status |
+
+### 13.5 Python LangChain Integration (Sprint 65)
+
+**Instalación:**
+
+```bash
+pip install neuralgraph[langchain]
+```
+
+**NeuralGraphStore - Graph Store compatible con LangChain:**
+
+```python
+from neuralgraph import NeuralGraphStore
+
+# Conectar a NeuralGraphDB
+graph = NeuralGraphStore(host="localhost", port=3000)
+
+# Obtener schema del grafo
+print(graph.get_schema())
+# Node labels: Person, Company
+# Relationship types: WORKS_AT, KNOWS
+
+# Ejecutar queries NGQL
+results = graph.query("MATCH (n:Person) RETURN n.name, n.age")
+# [{'name': 'Alice', 'age': 30}, {'name': 'Bob', 'age': 25}]
+
+# Métodos de conveniencia
+node_id = graph.add_node("Person", {"name": "Charlie", "age": 35})
+graph.add_edge(node_id, other_id, "KNOWS", {"since": 2024})
+```
+
+**GraphCypherQAChain - Natural Language Queries:**
+
+```python
+from neuralgraph import NeuralGraphStore, create_qa_chain
+from langchain_openai import ChatOpenAI
+
+# Configurar
+graph = NeuralGraphStore()
+llm = ChatOpenAI(model="gpt-4", temperature=0)
+
+# Crear chain de Q&A
+chain = create_qa_chain(llm, graph, verbose=True)
+
+# Consultar en lenguaje natural
+result = chain.invoke({"query": "Who works at TechCorp?"})
+print(result["result"])
+```
+
+**NeuralGraphQAChain - Chain Simplificado:**
+
+```python
+from neuralgraph import NeuralGraphStore, NeuralGraphQAChain
+
+graph = NeuralGraphStore()
+chain = NeuralGraphQAChain(graph, llm, verbose=True)
+
+# Múltiples interfaces
+answer = chain.run("How many people are in the database?")
+answer = chain("Find all engineers")
+result = chain.invoke({"query": "Who knows Alice?"})
+```
 
 ---
 
@@ -2353,6 +2416,7 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 | 62 | 0.9.6 | Full-text search index (tantivy): stemming, stop words, phrase/boolean queries |
 | 63 | 0.9.7 | Full-text search avanzado: fuzzy matching (Levenshtein), phonetic search (Soundex, Metaphone, DoubleMetaphone), 18 idiomas |
 | 64 | 0.9.8 | Array/Map data types: PropertyValue::Array, PropertyValue::Map, nested structures, JSON-compatible serialization |
+| 65 | 0.9.9 | LangChain Integration: NeuralGraphStore class, GraphCypherQAChain adapter, /api/schema endpoint, Python client chains module |
 
 ---
 
@@ -2404,5 +2468,5 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 ---
 
 *Documento generado: 2026-01-29*
-*Versión de NeuralGraphDB: 0.9.7*
-*Sprints completados: 1-63*
+*Versión de NeuralGraphDB: 0.9.9*
+*Sprints completados: 1-65*

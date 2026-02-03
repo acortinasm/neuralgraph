@@ -10,6 +10,11 @@
 # Build stage
 FROM rust:1.88-bookworm AS builder
 
+# Install protobuf compiler for prost
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends protobuf-compiler && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy manifest files first for better caching
@@ -31,6 +36,7 @@ RUN mkdir -p crates/neural-core/src && echo "fn main(){}" > crates/neural-core/s
 RUN cargo build --release --bin neuralgraph 2>/dev/null || true
 
 # Copy actual source code
+COPY proto/ proto/
 COPY crates/ crates/
 
 # Touch source files to invalidate cache and rebuild

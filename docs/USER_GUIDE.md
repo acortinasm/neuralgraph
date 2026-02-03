@@ -2,7 +2,7 @@
 
 > The Graph Database for AI Applications
 
-**Version**: 0.9.8
+**Version**: 0.9.9
 **Last Updated**: January 2026
 
 ---
@@ -62,7 +62,7 @@ NeuralGraphDB is a high-performance graph database designed for AI applications.
 cargo install neuralgraph
 
 # Or run with Docker
-docker run -p 3000:3000 neuralgraph/neuralgraph
+
 ```
 
 ### Quick Start
@@ -781,6 +781,59 @@ print(df)
 Start Arrow Flight server:
 ```bash
 neuralgraph serve-flight 50051
+```
+
+### LangChain Integration (New in Sprint 65)
+
+NeuralGraphDB integrates natively with LangChain for building GraphRAG applications.
+
+**Installation:**
+```bash
+pip install neuralgraph[langchain]
+```
+
+**Basic Usage:**
+```python
+from neuralgraph import NeuralGraphStore
+
+# Connect to NeuralGraphDB
+graph = NeuralGraphStore(host="localhost", port=3000)
+
+# View schema
+print(graph.get_schema())
+
+# Execute NGQL queries
+results = graph.query("MATCH (n:Person) RETURN n.name")
+```
+
+**Natural Language Q&A:**
+```python
+from neuralgraph import NeuralGraphStore, create_qa_chain
+from langchain_openai import ChatOpenAI
+
+# Setup
+graph = NeuralGraphStore()
+llm = ChatOpenAI(model="gpt-4", temperature=0)
+
+# Create Q&A chain
+chain = create_qa_chain(llm, graph, verbose=True)
+
+# Ask questions in natural language
+result = chain.invoke({"query": "Who are the employees at TechCorp?"})
+print(result["result"])
+```
+
+**Simplified QA Chain:**
+```python
+from neuralgraph import NeuralGraphStore, NeuralGraphQAChain
+
+graph = NeuralGraphStore()
+chain = NeuralGraphQAChain(graph, llm, verbose=True)
+
+# Multiple calling conventions
+answer = chain.run("How many people work here?")
+answer = chain("Find all engineers")
+result = chain.invoke({"query": "Who knows Alice?"})
 ```
 
 ---

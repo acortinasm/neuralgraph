@@ -337,6 +337,7 @@ MATCH (p:Paper)<-[:CITES]-(c) RETURN p.id, count(c) ORDER BY count(c) DESC LIMIT
 MATCH (p:Paper)-[:CITES]->(c) WHERE p.category = 'cs.LG' RETURN p.id, count(c) LIMIT 10
 
 -- Complex
-MATCH (a:Paper {id: 0}), (b:Paper {id: 100})
+MATCH (a:Paper), (b:Paper)
+WHERE a.id = 0 AND b.id = 100
 MATCH path = shortestPath((a)-[:CITES*]->(b)) RETURN path
 ```

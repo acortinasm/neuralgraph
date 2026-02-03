@@ -165,7 +165,7 @@ Expectativa de mercado. FalkorDB tiene integración nativa.
 | **Sprint 62** | **Full-Text Index (Core)** | Índice invertido con tantivy. Stemming básico. | ✅ | **P0** |
 | **Sprint 63** | **Full-Text Search (Advanced)** | Fuzzy matching, phonetic search, multi-language. | ✅ | **P0** |
 | **Sprint 64** | **Array/Map Data Types** | Tipos nativos Array y Map/JSON en propiedades. | ✅ | **P0** |
-| **Sprint 65** | **LangChain Integration** | NeuralGraphStore, GraphCypherQAChain adapter. | 📅 | **P0** |
+| **Sprint 65** | **LangChain Integration** | NeuralGraphStore, GraphCypherQAChain adapter. | ✅ | **P0** |
 | **Sprint 66** | **LlamaIndex Integration** | PropertyGraphStore, Knowledge Graph Index. | 📅 | **P0** |
 
 ---

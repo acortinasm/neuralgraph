@@ -168,7 +168,7 @@ MATCH (p:Paper)<-[:CITES]-(c) RETURN p.id, count(c) AS citations ORDER BY citati
 MATCH (a:Author) RETURN a.institution, count(a) ORDER BY count(a) DESC LIMIT 5
 
 -- Complex queries
-MATCH (a:Paper {id: 0}), (b:Paper {id: 100}) MATCH path = shortestPath((a)-[:CITES*]->(b)) RETURN path
+MATCH (a:Paper), (b:Paper) WHERE a.id = 0 AND b.id = 100 MATCH path = shortestPath((a)-[:CITES*]->(b)) RETURN path
 ```
 
 ---
