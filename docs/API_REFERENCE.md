@@ -28,6 +28,82 @@ http://localhost:3000
 
 ---
 
+### Authentication (Sprint 68)
+
+NeuralGraphDB supports optional authentication via JWT tokens or API keys.
+
+#### Security Model
+
+| Endpoint | Auth Required | Allowed Roles |
+|----------|---------------|---------------|
+| `/health`, `/metrics`, `/` | No | Public |
+| `/api/papers`, `/api/search`, `/api/similar/{id}`, `/api/schema` | Yes* | admin, user, readonly |
+| `/api/query` (read) | Yes* | admin, user, readonly |
+| `/api/query` (mutate) | Yes* | admin, user |
+| `/api/bulk-load` | Yes* | admin only |
+
+*When authentication is enabled via configuration.
+
+#### Authentication Methods
+
+**JWT Token:**
+```bash
+curl -X POST http://localhost:3000/api/query \
+  -H "Authorization: Bearer <jwt-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "MATCH (n) RETURN n"}'
+```
+
+**API Key:**
+```bash
+curl -X POST http://localhost:3000/api/query \
+  -H "X-API-Key: <your-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "MATCH (n) RETURN n"}'
+```
+
+#### Configuration
+
+Enable authentication via environment variables:
+```bash
+export NGDB__AUTH__ENABLED=true
+export NGDB__AUTH__JWT_SECRET="your-32-byte-secret-key-here!!!"
+export NGDB__AUTH__JWT_EXPIRATION_SECS=3600
+```
+
+Or via configuration file:
+```toml
+[auth]
+enabled = true
+jwt_secret = "your-32-byte-secret-key-here!!!"
+jwt_expiration_secs = 3600
+
+[[auth.api_keys]]
+name = "admin-service"
+key_hash = "sha256-hash-of-key"  # Use neural_storage::hash_api_key()
+role = "admin"
+```
+
+#### Error Responses
+
+**401 Unauthorized:**
+```json
+{
+  "error": "Missing authentication. Provide 'Authorization: Bearer <token>' or 'X-API-Key: <key>' header.",
+  "code": "UNAUTHORIZED"
+}
+```
+
+**403 Forbidden:**
+```json
+{
+  "error": "Admin role required, but user 'testuser' has role 'readonly'",
+  "code": "FORBIDDEN"
+}
+```
+
+---
+
 ### Endpoints
 
 #### Execute Query
@@ -259,6 +335,8 @@ neuralgraph_cache_hits_total 5000
 |--------|---------|
 | 200 | Success |
 | 400 | Bad request (invalid query syntax) |
+| 401 | Unauthorized (missing or invalid authentication) |
+| 403 | Forbidden (insufficient permissions) |
 | 404 | Resource not found |
 | 500 | Internal server error |
 
@@ -525,3 +603,4 @@ curl http://localhost:3000/api/health
 | 0.9.5 | Performance improvements, batch loading |
 | 0.9.9 | /api/schema endpoint for LangChain integration |
 | 0.9.10 | /health and /metrics endpoints for production observability |
+| 0.9.11 | JWT and API key authentication, role-based access control |

@@ -2,9 +2,9 @@
 
 > Base de datos de grafos nativa en Rust para cargas de trabajo de IA
 
-**Versión**: 0.9.10
+**Versión**: 0.9.11
 **Fecha**: 2026-02-04
-**Estado**: Fase 7 (Paridad Competitiva y Escala) - Sprint 67 (Production Observability)
+**Estado**: Fase 7 (Paridad Competitiva y Escala) - Sprint 68 (Security & Authentication)
 
 ---
 
@@ -100,6 +100,7 @@ neuralgraph/
 │   │   │   ├── memory.rs         # Memory tracking and limits (Sprint 66)
 │   │   │   ├── constraints.rs    # Unique constraint system (Sprint 66)
 │   │   │   ├── statistics.rs     # Graph statistics collection (Sprint 66)
+│   │   │   ├── auth.rs           # JWT/API key authentication (Sprint 68)
 │   │   │   │
 │   │   │   ├── full_text_index/  # Búsqueda full-text
 │   │   │   │   ├── mod.rs        # FullTextIndex, SearchResult, search_fuzzy
@@ -153,10 +154,11 @@ neuralgraph/
 │   │       ├── cmp.rs            # Comparison operations
 │   │       └── lib.rs            # Public API
 │   │
-│   └── neural-cli/               # CLI y servidores (~2,000 líneas)
+│   └── neural-cli/               # CLI y servidores (~2,200 líneas)
 │       └── src/
 │           ├── main.rs           # REPL entry point
 │           ├── server.rs         # HTTP/REST API (Axum)
+│           ├── auth_middleware.rs # Auth middleware (Sprint 68)
 │           ├── flight.rs         # Arrow Flight server
 │           └── raft_server.rs    # Raft consensus server
 │
@@ -2241,6 +2243,46 @@ ORDER BY size DESC
 | `/api/bulk-load` | POST | Carga masiva CSV | `{"nodes_path": "...", "edges_path": "..."}` |
 | `/api/schema` | GET | Schema del grafo (Sprint 65) | - |
 
+#### Autenticación (Sprint 68)
+
+NeuralGraphDB soporta autenticación opcional mediante JWT tokens o API keys.
+
+**Modelo de Seguridad:**
+
+| Endpoint | Auth Requerida | Roles Permitidos |
+|----------|----------------|------------------|
+| `/health`, `/metrics`, `/` | No | Público |
+| `/api/papers`, `/api/search`, `/api/similar/{id}`, `/api/schema` | Sí* | admin, user, readonly |
+| `/api/query` (lectura) | Sí* | admin, user, readonly |
+| `/api/query` (mutación) | Sí* | admin, user |
+| `/api/bulk-load` | Sí* | admin solamente |
+
+*Cuando la autenticación está habilitada en configuración.
+
+**Métodos de Autenticación:**
+
+```bash
+# JWT Token
+curl -X POST http://localhost:3000/api/query \
+  -H "Authorization: Bearer <jwt-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "MATCH (n) RETURN n"}'
+
+# API Key
+curl -X POST http://localhost:3000/api/query \
+  -H "X-API-Key: <your-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "MATCH (n) RETURN n"}'
+```
+
+**Configuración:**
+
+```bash
+export NGDB__AUTH__ENABLED=true
+export NGDB__AUTH__JWT_SECRET="your-32-byte-secret-key-here!!!"
+export NGDB__AUTH__JWT_EXPIRATION_SECS=3600
+```
+
 **Ejemplo - Ejecutar Query:**
 
 ```bash
@@ -2580,6 +2622,7 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 | 65 | 0.9.9 | LangChain Integration: NeuralGraphStore class, GraphCypherQAChain adapter, /api/schema endpoint, Python client chains module |
 | 66 | 0.9.9 | Database Hardening: WAL CRC32 checksums, SHA256 snapshot checksums, delta checkpoints, unified TOML config, memory tracking, unique constraints |
 | 67 | 0.9.10 | Production Observability: /health endpoint, /metrics Prometheus endpoint, query latency instrumentation, structured logging, Docker healthcheck |
+| 68 | 0.9.11 | Security & Authentication: JWT token validation, API key auth, role-based access control (Admin/User/Readonly), audit logging, constant-time key comparison |
 
 ---
 
@@ -2631,5 +2674,5 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 ---
 
 *Documento generado: 2026-02-04*
-*Versión de NeuralGraphDB: 0.9.10*
-*Sprints completados: 1-67*
+*Versión de NeuralGraphDB: 0.9.11*
+*Sprints completados: 1-68*

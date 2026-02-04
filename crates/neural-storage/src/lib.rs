@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod community;
 pub mod config;
 pub mod constraints;
@@ -52,6 +53,7 @@ pub use full_text_index::{
 };
 pub use persistence::{BackupConfig, DeltaCheckpoint, GraphSnapshot, PersistenceError};
 pub use graph_store::{EdgeTypeIndex, LabelIndex, PropertyIndex, TimestampIndex, ValidationResult, ValidationError};
+pub use auth::{AuthConfig, ApiKeyConfig, AuthError, AuthUser, Claims, Role, hash_api_key};
 
 #[cfg(test)]
 mod tests {

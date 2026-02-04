@@ -33,6 +33,7 @@ axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["fs", "cors"] }
 futures = "0.3"
+tracing = "0.1"
 
 # Arrow Flight & gRPC
 arrow.workspace = true

@@ -5,9 +5,10 @@
 //! Run with: cargo run -p neural-cli --release -- serve
 
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, State},
     http::StatusCode,
+    middleware,
     response::Html,
     routing::{get, post},
 };
@@ -15,7 +16,8 @@ use neural_storage::csv_loader::{load_nodes_csv, load_edges_csv};
 use neural_core::{Graph, Label, NodeId};
 use neural_executor::{execute_statement_from_ast, execute_query_from_ast, StatementResult};
 use neural_parser::Statement;
-use neural_storage::{BackupConfig, GraphStore, MetricsRegistry, VectorIndex};
+use neural_storage::{AuthConfig, AuthUser, BackupConfig, GraphStore, MetricsRegistry, VectorIndex};
+use crate::auth_middleware::{auth_middleware, check_permission, is_mutation_query};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -105,6 +107,32 @@ impl PersistenceConfig {
     }
 }
 
+/// Loads auth configuration from environment variables (Sprint 68).
+///
+/// Environment variables:
+/// - `NGDB__AUTH__ENABLED`: Enable authentication (default: false)
+/// - `NGDB__AUTH__JWT_SECRET`: JWT signing secret (required if enabled)
+/// - `NGDB__AUTH__JWT_EXPIRATION_SECS`: JWT expiration in seconds (default: 3600)
+fn load_auth_config_from_env() -> AuthConfig {
+    let enabled = std::env::var("NGDB__AUTH__ENABLED")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false);
+
+    let jwt_secret = std::env::var("NGDB__AUTH__JWT_SECRET").unwrap_or_default();
+
+    let jwt_expiration_secs = std::env::var("NGDB__AUTH__JWT_EXPIRATION_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3600);
+
+    AuthConfig {
+        enabled,
+        jwt_secret,
+        jwt_expiration_secs,
+        api_keys: Vec::new(), // API keys loaded from config file only
+    }
+}
+
 /// Application state shared across handlers
 pub struct AppState {
     /// The graph store (async RwLock for non-blocking access)
@@ -120,6 +148,8 @@ pub struct AppState {
     pub metrics: Arc<MetricsRegistry>,
     /// Server start time for uptime calculation (Sprint 67)
     pub start_time: std::time::Instant,
+    /// Authentication configuration (Sprint 68)
+    pub auth_config: Arc<AuthConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -163,6 +193,11 @@ pub struct PaperWithScore {
 
 /// Loads the graph and embeddings, returns AppState
 pub fn load_data(config: PersistenceConfig) -> Result<AppState, Box<dyn std::error::Error>> {
+    load_data_with_auth(config, AuthConfig::default())
+}
+
+/// Loads the graph and embeddings with auth configuration, returns AppState
+pub fn load_data_with_auth(config: PersistenceConfig, auth_config: AuthConfig) -> Result<AppState, Box<dyn std::error::Error>> {
     let path = &config.db_path;
 
     // Try to load from persistent binary format first
@@ -228,6 +263,7 @@ pub fn load_data(config: PersistenceConfig) -> Result<AppState, Box<dyn std::err
         config,
         metrics,
         start_time: std::time::Instant::now(),
+        auth_config: Arc::new(auth_config),
     })
 }
 
@@ -322,20 +358,28 @@ fn load_embeddings(papers: &[PaperInfo]) -> (VectorIndex, HashMap<String, Vec<f3
     (vector_index, paper_embeddings)
 }
 
-/// Creates the Axum router
+/// Creates the Axum router with authentication (Sprint 68)
 pub fn create_router(state: Arc<AppState>) -> Router {
-    Router::new()
+    // Public routes - no authentication required
+    let public = Router::new()
         .route("/", get(index_handler))
-        // Observability endpoints (Sprint 67)
         .route("/health", get(handle_health))
-        .route("/metrics", get(handle_metrics))
-        // API endpoints
+        .route("/metrics", get(handle_metrics));
+
+    // Protected routes - require authentication when enabled
+    let protected = Router::new()
         .route("/api/papers", get(list_papers))
         .route("/api/search", post(search_papers))
         .route("/api/similar/{id}", get(similar_papers))
         .route("/api/query", post(handle_query))
         .route("/api/bulk-load", post(handle_bulk_load))
         .route("/api/schema", get(handle_schema))
+        .layer(middleware::from_fn(auth_middleware))
+        .layer(Extension(state.auth_config.clone()));
+
+    Router::new()
+        .merge(public)
+        .merge(protected)
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -711,20 +755,44 @@ async fn handle_schema(
 
 async fn handle_query(
     State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthUser>,
     Json(req): Json<QueryRequest>,
-) -> Json<QueryResponse> {
+) -> Result<Json<QueryResponse>, (StatusCode, Json<QueryResponse>)> {
     let start = std::time::Instant::now();
+
+    // Check if this is a mutation query and verify write permission (Sprint 68)
+    let is_mutation = is_mutation_query(&req.query);
+    if is_mutation {
+        if let Err(response) = check_permission(&user, true, false) {
+            return Err((StatusCode::FORBIDDEN, Json(QueryResponse {
+                success: false,
+                result: None,
+                error: Some(format!("Insufficient permissions: write access required for mutation queries")),
+                execution_time_ms: start.elapsed().as_secs_f64() * 1000.0,
+            })));
+        }
+    }
+
+    // Audit log (Sprint 68)
+    tracing::info!(
+        target: "audit",
+        user = %user.name,
+        role = %user.role,
+        query_type = if is_mutation { "mutation" } else { "read" },
+        "Query executed"
+    );
+
     println!("Executing query: {}", req.query);
 
     // 1. Parse to check type
     let stmt = match neural_parser::parse_statement(&req.query) {
         Ok(s) => s,
-        Err(e) => return Json(QueryResponse {
+        Err(e) => return Ok(Json(QueryResponse {
             success: false,
             result: None,
             error: Some(format!("Parse Error: {}", e)),
             execution_time_ms: start.elapsed().as_secs_f64() * 1000.0,
-        }),
+        })),
     };
 
     // 2. Execute (using pre-parsed AST to avoid double parsing)
@@ -769,7 +837,7 @@ async fn handle_query(
                         .collect()
                 })
                 .collect();
-            Json(QueryResponse {
+            Ok(Json(QueryResponse {
                 success: true,
                 result: Some(serde_json::json!({
                     "type": "query",
@@ -779,7 +847,7 @@ async fn handle_query(
                 })),
                 error: None,
                 execution_time_ms: elapsed_ms,
-            })
+            }))
         },
         Ok(StatementResult::Mutation(m_res)) => {
             // Increment mutation counter and trigger auto-save if threshold reached
@@ -809,15 +877,15 @@ async fn handle_query(
                     "count": count
                 }),
             };
-             Json(QueryResponse {
+            Ok(Json(QueryResponse {
                 success: true,
                 result: Some(result_json),
                 error: None,
                 execution_time_ms: elapsed_ms,
-            })
+            }))
         },
         Ok(StatementResult::Explain(plan)) => {
-             Json(QueryResponse {
+            Ok(Json(QueryResponse {
                 success: true,
                 result: Some(serde_json::json!({
                     "type": "explain",
@@ -825,10 +893,10 @@ async fn handle_query(
                 })),
                 error: None,
                 execution_time_ms: elapsed_ms,
-            })
+            }))
         },
         Ok(StatementResult::TransactionStarted) => {
-             Json(QueryResponse {
+            Ok(Json(QueryResponse {
                 success: true,
                 result: Some(serde_json::json!({
                     "type": "transaction",
@@ -837,10 +905,10 @@ async fn handle_query(
                 })),
                 error: None,
                 execution_time_ms: elapsed_ms,
-            })
+            }))
         },
         Ok(StatementResult::TransactionCommitted) => {
-             Json(QueryResponse {
+            Ok(Json(QueryResponse {
                 success: true,
                 result: Some(serde_json::json!({
                     "type": "transaction",
@@ -848,10 +916,10 @@ async fn handle_query(
                 })),
                 error: None,
                 execution_time_ms: elapsed_ms,
-            })
+            }))
         },
         Ok(StatementResult::TransactionRolledBack) => {
-             Json(QueryResponse {
+            Ok(Json(QueryResponse {
                 success: true,
                 result: Some(serde_json::json!({
                     "type": "transaction",
@@ -859,10 +927,10 @@ async fn handle_query(
                 })),
                 error: None,
                 execution_time_ms: elapsed_ms,
-            })
+            }))
         },
         Ok(StatementResult::Flashback { timestamp, tx_id }) => {
-             Json(QueryResponse {
+            Ok(Json(QueryResponse {
                 success: true,
                 result: Some(serde_json::json!({
                     "type": "flashback",
@@ -872,10 +940,10 @@ async fn handle_query(
                 })),
                 error: None,
                 execution_time_ms: elapsed_ms,
-            })
+            }))
         },
         Ok(StatementResult::Call { procedure, result }) => {
-            Json(QueryResponse {
+            Ok(Json(QueryResponse {
                 success: true,
                 result: Some(serde_json::json!({
                     "type": "call",
@@ -884,23 +952,47 @@ async fn handle_query(
                 })),
                 error: None,
                 execution_time_ms: elapsed_ms,
-            })
+            }))
         },
-        Err(e) => Json(QueryResponse {
+        Err(e) => Ok(Json(QueryResponse {
             success: false,
             result: None,
             error: Some(format!("Execution Error: {}", e)),
             execution_time_ms: elapsed_ms,
-        }),
+        })),
     }
 }
 
 /// Handles bulk loading of CSV data using the fast builder pattern
+/// Requires admin role (Sprint 68)
 async fn handle_bulk_load(
     State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthUser>,
     Json(req): Json<BulkLoadRequest>,
-) -> Json<BulkLoadResponse> {
+) -> Result<Json<BulkLoadResponse>, (StatusCode, Json<BulkLoadResponse>)> {
     let start = std::time::Instant::now();
+
+    // Require admin permission for bulk load (Sprint 68)
+    if let Err(_) = check_permission(&user, false, true) {
+        return Err((StatusCode::FORBIDDEN, Json(BulkLoadResponse {
+            success: false,
+            nodes_loaded: 0,
+            edges_loaded: 0,
+            error: Some("Admin role required for bulk load operations".to_string()),
+            load_time_ms: start.elapsed().as_secs_f64() * 1000.0,
+        })));
+    }
+
+    // Audit log (Sprint 68)
+    tracing::info!(
+        target: "audit",
+        user = %user.name,
+        role = %user.role,
+        nodes_path = ?req.nodes_path,
+        edges_path = ?req.edges_path,
+        "Bulk load initiated"
+    );
+
     println!("Bulk load request: nodes={:?}, edges={:?}, clear={}",
              req.nodes_path, req.edges_path, req.clear_existing);
 
@@ -925,13 +1017,13 @@ async fn handle_bulk_load(
                 println!("  Parsed {} nodes", nodes_loaded);
             }
             Err(e) => {
-                return Json(BulkLoadResponse {
+                return Ok(Json(BulkLoadResponse {
                     success: false,
                     nodes_loaded: 0,
                     edges_loaded: 0,
                     error: Some(format!("Failed to load nodes: {}", e)),
                     load_time_ms: start.elapsed().as_secs_f64() * 1000.0,
-                });
+                }));
             }
         }
     }
@@ -955,13 +1047,13 @@ async fn handle_bulk_load(
                 println!("  Parsed {} edges", edges_loaded);
             }
             Err(e) => {
-                return Json(BulkLoadResponse {
+                return Ok(Json(BulkLoadResponse {
                     success: false,
                     nodes_loaded,
                     edges_loaded: 0,
                     error: Some(format!("Failed to load edges: {}", e)),
                     load_time_ms: start.elapsed().as_secs_f64() * 1000.0,
-                });
+                }));
             }
         }
     }
@@ -982,13 +1074,13 @@ async fn handle_bulk_load(
     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
     println!("  Bulk load completed in {:.2}ms", elapsed);
 
-    Json(BulkLoadResponse {
+    Ok(Json(BulkLoadResponse {
         success: true,
         nodes_loaded,
         edges_loaded,
         error: None,
         load_time_ms: elapsed,
-    })
+    }))
 }
 
 /// Starts the web server with automatic persistence using default config.
@@ -1006,6 +1098,11 @@ pub async fn run_server_with_path(port: u16, db_path: &str) -> Result<(), Box<dy
 
 /// Starts the web server with full configuration control.
 pub async fn run_server_with_config(port: u16, config: PersistenceConfig) -> Result<(), Box<dyn std::error::Error>> {
+    run_server_with_auth(port, config, AuthConfig::default()).await
+}
+
+/// Starts the web server with full configuration and auth control.
+pub async fn run_server_with_auth(port: u16, config: PersistenceConfig, auth_config: AuthConfig) -> Result<(), Box<dyn std::error::Error>> {
     // Initialize structured logging (Sprint 67)
     if std::env::var("NGDB_LOG_JSON").is_ok() {
         neural_storage::logging::init_json();
@@ -1013,7 +1110,14 @@ pub async fn run_server_with_config(port: u16, config: PersistenceConfig) -> Res
         neural_storage::logging::init();
     }
 
-    let state = Arc::new(load_data(config.clone())?);
+    // Load auth config from environment if not provided (Sprint 68)
+    let auth_config = if auth_config.jwt_secret.is_empty() {
+        load_auth_config_from_env()
+    } else {
+        auth_config
+    };
+
+    let state = Arc::new(load_data_with_auth(config.clone(), auth_config.clone())?);
     let app = create_router(state.clone());
 
     // Background periodic save task (non-blocking)
@@ -1086,6 +1190,12 @@ pub async fn run_server_with_config(port: u16, config: PersistenceConfig) -> Res
     println!("   Auto-save: every {}s or {} mutations", config.save_interval_secs, config.mutation_threshold);
     println!("   Backups: {} retained", config.backup_count);
     println!("   Shutdown timeout: {}s", config.shutdown_timeout_secs);
+    // Sprint 68: Auth status
+    if auth_config.enabled {
+        println!("   Auth: enabled (JWT + {} API keys)", auth_config.api_keys.len());
+    } else {
+        println!("   Auth: disabled (all endpoints public)");
+    }
     println!("   Press Ctrl+C to stop\n");
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;

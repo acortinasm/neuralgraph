@@ -15,6 +15,7 @@
 //! neuralgraph --benchmark
 //! ```
 
+mod auth_middleware;
 mod server;
 mod flight;
 mod raft_server;

@@ -1,4 +1,4 @@
-# NeuralGraphDB Quick Reference (v0.9.10)
+# NeuralGraphDB Quick Reference (v0.9.11)
 
 ## Shell Commands
 
@@ -283,6 +283,9 @@ CALL neural.constraint.drop('person_email')
 | `NGDB__PERSISTENCE__SAVE_INTERVAL_SECS` | `60` | Auto-save interval |
 | `NGDB__PERSISTENCE__CHECKSUM_ENABLED` | `true` | SHA256 checksums |
 | `NGDB__MEMORY__LIMIT_MB` | `0` | Memory limit (0=unlimited) |
+| `NGDB__AUTH__ENABLED` | `false` | Enable authentication |
+| `NGDB__AUTH__JWT_SECRET` | - | JWT signing secret |
+| `NGDB__AUTH__JWT_EXPIRATION_SECS` | `3600` | JWT expiration |
 | `NGDB_LOG` | `info` | Log level |
 
 ### Logging
@@ -328,12 +331,53 @@ curl -X POST http://localhost:3000/api/query \
   -H "Content-Type: application/json" \
   -d '{"query": "MATCH (n) RETURN n LIMIT 10"}'
 
-# Health check (Sprint 67)
+# With JWT authentication (Sprint 68)
+curl -X POST http://localhost:3000/api/query \
+  -H "Authorization: Bearer <jwt-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "MATCH (n) RETURN n LIMIT 10"}'
+
+# With API key authentication (Sprint 68)
+curl -X POST http://localhost:3000/api/query \
+  -H "X-API-Key: <your-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "MATCH (n) RETURN n LIMIT 10"}'
+
+# Health check (Sprint 67) - No auth required
 curl http://localhost:3000/health
 
-# Prometheus metrics (Sprint 67)
+# Prometheus metrics (Sprint 67) - No auth required
 curl http://localhost:3000/metrics
 ```
+
+---
+
+## Authentication (Sprint 68)
+
+### Enable Auth
+```bash
+export NGDB__AUTH__ENABLED=true
+export NGDB__AUTH__JWT_SECRET="your-32-byte-secret-key-here!!!"
+```
+
+### Roles
+| Role | Read | Write | Admin |
+|------|------|-------|-------|
+| `admin` | Yes | Yes | Yes |
+| `user` | Yes | Yes | No |
+| `readonly` | Yes | No | No |
+
+### Public Endpoints (no auth required)
+- `GET /health`
+- `GET /metrics`
+- `GET /`
+
+### Protected Endpoints
+| Endpoint | Required Role |
+|----------|---------------|
+| `/api/query` (read) | admin, user, readonly |
+| `/api/query` (mutate) | admin, user |
+| `/api/bulk-load` | admin only |
 
 ---
 

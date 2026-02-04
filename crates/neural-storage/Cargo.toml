@@ -71,6 +71,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # Configuration
 toml = "0.8"
 
+# Authentication (Sprint 68)
+jsonwebtoken = "9"
+base64 = "0.22"
+
 [features]
 default = []
 metrics = ["prometheus"]

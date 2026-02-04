@@ -28,6 +28,7 @@
 //! println!("Save interval: {} seconds", config.persistence.save_interval_secs);
 //! ```
 
+use crate::auth::AuthConfig;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
@@ -54,6 +55,8 @@ pub struct NeuralGraphConfig {
     pub memory: MemoryConfig,
     /// Logging configuration
     pub logging: LoggingConfig,
+    /// Authentication configuration (Sprint 68)
+    pub auth: AuthConfig,
 }
 
 impl Default for NeuralGraphConfig {
@@ -63,6 +66,7 @@ impl Default for NeuralGraphConfig {
             persistence: PersistenceConfig::default(),
             memory: MemoryConfig::default(),
             logging: LoggingConfig::default(),
+            auth: AuthConfig::default(),
         }
     }
 }
@@ -131,6 +135,19 @@ impl NeuralGraphConfig {
         }
         if let Ok(val) = std::env::var("NGDB__LOGGING__JSON") {
             self.logging.json = val.to_lowercase() == "true" || val == "1";
+        }
+
+        // Auth overrides (Sprint 68)
+        if let Ok(val) = std::env::var("NGDB__AUTH__ENABLED") {
+            self.auth.enabled = val.to_lowercase() == "true" || val == "1";
+        }
+        if let Ok(val) = std::env::var("NGDB__AUTH__JWT_SECRET") {
+            self.auth.jwt_secret = val;
+        }
+        if let Ok(val) = std::env::var("NGDB__AUTH__JWT_EXPIRATION_SECS") {
+            if let Ok(v) = val.parse() {
+                self.auth.jwt_expiration_secs = v;
+            }
         }
     }
 

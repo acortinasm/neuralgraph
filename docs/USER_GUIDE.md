@@ -2,7 +2,7 @@
 
 > The Graph Database for AI Applications
 
-**Version**: 0.9.10
+**Version**: 0.9.11
 **Last Updated**: February 2026
 
 ---
@@ -19,8 +19,9 @@
 8. [Vector Search](#8-vector-search)
 9. [Graph Analytics](#9-graph-analytics)
 10. [APIs & Integrations](#10-apis--integrations)
-11. [Administration](#11-administration)
-12. [Best Practices](#12-best-practices)
+11. [Authentication](#11-authentication)
+12. [Administration](#12-administration)
+13. [Best Practices](#13-best-practices)
 
 ---
 
@@ -875,7 +876,104 @@ result = chain.invoke({"query": "Who knows Alice?"})
 
 ---
 
-## 11. Administration
+## 11. Authentication
+
+NeuralGraphDB supports optional authentication for production deployments.
+
+### Security Model
+
+| Endpoint | Auth Required | Allowed Roles |
+|----------|---------------|---------------|
+| `/health`, `/metrics`, `/` | No | Public |
+| `/api/papers`, `/api/search`, `/api/similar/{id}`, `/api/schema` | Yes* | admin, user, readonly |
+| `/api/query` (read) | Yes* | admin, user, readonly |
+| `/api/query` (mutate) | Yes* | admin, user |
+| `/api/bulk-load` | Yes* | admin only |
+
+*When `auth.enabled = true` in configuration.
+
+### Enabling Authentication
+
+#### Via Environment Variables
+
+```bash
+export NGDB__AUTH__ENABLED=true
+export NGDB__AUTH__JWT_SECRET="your-32-byte-secret-key-here!!!"
+export NGDB__AUTH__JWT_EXPIRATION_SECS=3600
+```
+
+#### Via Configuration File
+
+```toml
+[auth]
+enabled = true
+jwt_secret = "your-32-byte-secret-key-here!!!"
+jwt_expiration_secs = 3600
+
+[[auth.api_keys]]
+name = "admin-service"
+key_hash = "sha256-hash-of-key"
+role = "admin"
+
+[[auth.api_keys]]
+name = "readonly-client"
+key_hash = "sha256-hash-of-key"
+role = "readonly"
+```
+
+### Using JWT Tokens
+
+```bash
+# Include JWT token in Authorization header
+curl -X POST http://localhost:3000/api/query \
+  -H "Authorization: Bearer <your-jwt-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "MATCH (n) RETURN n LIMIT 5"}'
+```
+
+### Using API Keys
+
+```bash
+# Include API key in X-API-Key header
+curl -X POST http://localhost:3000/api/query \
+  -H "X-API-Key: <your-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "MATCH (n) RETURN n LIMIT 5"}'
+```
+
+### Role Permissions
+
+| Role | Read | Write | Admin |
+|------|------|-------|-------|
+| `admin` | Yes | Yes | Yes |
+| `user` | Yes | Yes | No |
+| `readonly` | Yes | No | No |
+
+- **Read**: Execute MATCH queries
+- **Write**: Execute CREATE, SET, DELETE, MERGE queries
+- **Admin**: Execute bulk-load operations
+
+### Error Responses
+
+**401 Unauthorized:**
+```json
+{
+  "error": "Missing authentication. Provide 'Authorization: Bearer <token>' or 'X-API-Key: <key>' header.",
+  "code": "UNAUTHORIZED"
+}
+```
+
+**403 Forbidden:**
+```json
+{
+  "error": "Write permission required, but user 'readonly-client' has readonly role",
+  "code": "FORBIDDEN"
+}
+```
+
+---
+
+## 12. Administration
 
 ### Server Modes
 
@@ -1132,7 +1230,7 @@ scrape_configs:
 
 ---
 
-## 12. Best Practices
+## 13. Best Practices
 
 ### Data Modeling
 
