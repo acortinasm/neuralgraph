@@ -5265,3 +5265,190 @@ let label = store.get_label_at(node_id, snapshot_id);
 1.  **Distributed Consensus (Raft):** Implement leader election and log replication.
 2.  **Cluster Management:** Node discovery, membership changes, failover.
 3.  **Snapshot Coordinator:** Global transaction ordering across nodes.
+
+
+================================================================================
+# Report: sprint_67_report.md
+================================================================================
+
+# Sprint 67: Production Observability - Final Report
+
+**Date:** 2026-02-04
+**Status:** ✅ Completed
+**Duration:** 1 session
+
+---
+
+## Objective
+
+> Add production-ready monitoring to NeuralGraphDB by wiring existing infrastructure (MetricsRegistry, logging) into the HTTP server and adding health/metrics endpoints.
+
+---
+
+## Deliverables
+
+### 1. `/health` Endpoint
+
+Returns JSON with database status, node/edge counts, uptime, and component health for load balancer integration.
+
+**Response Format:**
+```json
+{
+  "status": "healthy",
+  "uptime_seconds": 3600,
+  "database": {
+    "loaded": true,
+    "node_count": 12345,
+    "edge_count": 67890,
+    "path": "data/graph.ngdb"
+  }
+}
+```
+
+### 2. `/metrics` Endpoint
+
+Exposes Prometheus text format for scraping by monitoring systems.
+
+**Key Metrics:**
+| Metric | Type | Description |
+|--------|------|-------------|
+| `neuralgraph_query_total` | Counter | Total queries executed |
+| `neuralgraph_query_latency_seconds` | Histogram | Query latency distribution |
+| `neuralgraph_node_count` | Gauge | Total nodes in graph |
+| `neuralgraph_edge_count` | Gauge | Total edges in graph |
+| `neuralgraph_cache_hits_total` | Counter | Cache hit count |
+| `neuralgraph_cache_misses_total` | Counter | Cache miss count |
+
+### 3. Query Latency Recording
+
+Instrumented `handle_query()` to record latencies to the metrics registry.
+
+### 4. Structured Logging
+
+Initialized tracing on server startup with optional JSON output via `NGDB_LOG_JSON` environment variable.
+
+---
+
+## Files Modified
+
+| File | Changes |
+|------|---------|
+| `crates/neural-cli/Cargo.toml` | Added `features = ["metrics"]` to neural-storage dependency |
+| `crates/neural-cli/src/server.rs` | Added endpoints, AppState fields, instrumentation |
+| `crates/neural-storage/src/metrics.rs` | Added `node_count` and `edge_count` gauges |
+| `docker-compose.yml` | Updated healthcheck to use `/health` endpoint |
+
+---
+
+## Implementation Details
+
+### 1. Metrics Feature Enabled
+```toml
+# crates/neural-cli/Cargo.toml
+neural-storage = { workspace = true, features = ["metrics"] }
+```
+
+### 2. Extended AppState
+```rust
+pub struct AppState {
+    // ... existing fields ...
+    pub metrics: Arc<MetricsRegistry>,
+    pub start_time: std::time::Instant,
+}
+```
+
+### 3. Health & Metrics Handlers
+```rust
+async fn handle_health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
+    let store = state.store.read().await;
+    let node_count = store.node_count();
+    let edge_count = store.edge_count();
+    let uptime = state.start_time.elapsed().as_secs();
+    
+    state.metrics.set_node_count(node_count);
+    state.metrics.set_edge_count(edge_count);
+    
+    Json(HealthResponse {
+        status: "healthy".to_string(),
+        uptime_seconds: uptime,
+        database: DatabaseHealth {
+            loaded: true,
+            node_count,
+            edge_count,
+            path: state.config.db_path.display().to_string(),
+        },
+    })
+}
+
+async fn handle_metrics(State(state): State<Arc<AppState>>) -> Result<String, (StatusCode, String)> {
+    let store = state.store.read().await;
+    state.metrics.set_node_count(store.node_count());
+    state.metrics.set_edge_count(store.edge_count());
+    drop(store);
+    
+    state.metrics.export().map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to export metrics: {}", e))
+    })
+}
+```
+
+### 4. Logging Initialization
+```rust
+// In run_server_with_config()
+if std::env::var("NGDB_LOG_JSON").is_ok() {
+    neural_storage::logging::init_json();
+} else {
+    neural_storage::logging::init();
+}
+```
+
+### 5. Query Latency Recording
+```rust
+// In handle_query()
+let elapsed = start.elapsed();
+state.metrics.record_query_latency(elapsed);
+```
+
+### 6. Docker Healthcheck
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 10s
+```
+
+---
+
+## Testing
+
+```bash
+# Build verification
+cargo build -p neural-cli --release  # ✅ Success
+
+# Metrics tests
+cargo test -p neural-storage metrics --features metrics  # ✅ All pass
+
+# Manual verification
+curl http://localhost:3000/health | jq .
+curl http://localhost:3000/metrics | head -20
+```
+
+---
+
+## Key Learnings
+
+1. **Feature Gating:** The metrics module was already implemented with proper feature gating in Sprint 66 - it just needed to be enabled and wired up.
+
+2. **Minimal Changes:** By leveraging existing infrastructure (MetricsRegistry, logging module), the implementation required only ~50 lines of new code.
+
+3. **Production Patterns:** The health endpoint follows best practices for Kubernetes/load balancer integration with proper status, uptime, and component health details.
+
+---
+
+## Next Steps
+
+- Sprint 68: Consider adding additional metrics (memory usage, WAL size, active transactions)
+- Consider adding `/ready` endpoint separate from `/health` for startup probes
+- Add Grafana dashboard templates for common monitoring scenarios

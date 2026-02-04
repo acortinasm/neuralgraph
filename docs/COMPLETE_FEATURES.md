@@ -1,10 +1,10 @@
-# NeuralGraphDB v0.9.9 - Documentación Completa de Funcionalidades
+# NeuralGraphDB v0.9.10 - Documentación Completa de Funcionalidades
 
 > Base de datos de grafos nativa en Rust para cargas de trabajo de IA
 
-**Versión**: 0.9.9
+**Versión**: 0.9.10
 **Fecha**: 2026-02-04
-**Estado**: Fase 7 (Paridad Competitiva y Escala) - Sprint 66 (Database Hardening)
+**Estado**: Fase 7 (Paridad Competitiva y Escala) - Sprint 67 (Production Observability)
 
 ---
 
@@ -2578,6 +2578,8 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 | 63 | 0.9.7 | Full-text search avanzado: fuzzy matching (Levenshtein), phonetic search (Soundex, Metaphone, DoubleMetaphone), 18 idiomas |
 | 64 | 0.9.8 | Array/Map data types: PropertyValue::Array, PropertyValue::Map, nested structures, JSON-compatible serialization |
 | 65 | 0.9.9 | LangChain Integration: NeuralGraphStore class, GraphCypherQAChain adapter, /api/schema endpoint, Python client chains module |
+| 66 | 0.9.9 | Database Hardening: WAL CRC32 checksums, SHA256 snapshot checksums, delta checkpoints, unified TOML config, memory tracking, unique constraints |
+| 67 | 0.9.10 | Production Observability: /health endpoint, /metrics Prometheus endpoint, query latency instrumentation, structured logging, Docker healthcheck |
 
 ---
 
@@ -2628,6 +2630,6 @@ MATCH (n:Person) WHERE n.name = $name RETURN n
 
 ---
 
-*Documento generado: 2026-01-29*
-*Versión de NeuralGraphDB: 0.9.9*
-*Sprints completados: 1-65*
+*Documento generado: 2026-02-04*
+*Versión de NeuralGraphDB: 0.9.10*
+*Sprints completados: 1-67*

@@ -1,4 +1,4 @@
-# NeuralGraphDB Quick Reference (v0.9.9)
+# NeuralGraphDB Quick Reference (v0.9.10)
 
 ## Shell Commands
 
@@ -291,7 +291,32 @@ CALL neural.constraint.drop('person_email')
 export NGDB_LOG=info                                 # Default
 export NGDB_LOG=debug                                # Verbose
 export NGDB_LOG=neural_storage::wal=debug,info      # Module-specific
+export NGDB_LOG_JSON=1                               # JSON output (Sprint 67)
 ```
+
+---
+
+## Observability (Sprint 67)
+
+### Health Endpoint
+```bash
+curl http://localhost:3000/health
+```
+Returns: status, uptime, node/edge counts, database path
+
+### Metrics Endpoint
+```bash
+curl http://localhost:3000/metrics
+```
+Prometheus format with: query_total, query_latency, node_count, edge_count, cache stats
+
+### Key Metrics
+| Metric | Type | Description |
+|--------|------|-------------|
+| `neuralgraph_query_total` | Counter | Total queries |
+| `neuralgraph_query_latency_seconds` | Histogram | Latency distribution |
+| `neuralgraph_node_count` | Gauge | Total nodes |
+| `neuralgraph_edge_count` | Gauge | Total edges |
 
 ---
 
@@ -302,6 +327,12 @@ export NGDB_LOG=neural_storage::wal=debug,info      # Module-specific
 curl -X POST http://localhost:3000/api/query \
   -H "Content-Type: application/json" \
   -d '{"query": "MATCH (n) RETURN n LIMIT 10"}'
+
+# Health check (Sprint 67)
+curl http://localhost:3000/health
+
+# Prometheus metrics (Sprint 67)
+curl http://localhost:3000/metrics
 ```
 
 ---

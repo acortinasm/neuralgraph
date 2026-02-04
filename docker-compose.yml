@@ -1,32 +1,70 @@
 # =============================================================================
-# NeuralGraphDB Docker Compose
+# NeuralGraphDB Docker Compose - Production
 # =============================================================================
 #
 # Usage:
-#   docker-compose up -d        # Start in background
-#   docker-compose run neuralgraph --demo    # Run demo
-#   docker-compose run neuralgraph           # Interactive REPL
-#   docker-compose down         # Stop
+#   docker-compose up -d              # Start all services
+#   docker-compose logs -f ng-db-news # View logs
+#   docker-compose stop -t 30         # Graceful stop (allows save)
+#   docker-compose down               # Stop and remove
 # =============================================================================
 
-version: '3.8'
-
 services:
-  neuralgraph:
+  ng-db-news:
     build: .
     image: neuralgraph:0.1.0
-    stdin_open: true
-    tty: true
-    command: ["serve", "3000"]
+    container_name: ng-db-news
+    command: ["serve", "--host", "0.0.0.0", "--port", "3000"]
     ports:
       - "3000:3000"
+      - "50051:50051"
     volumes:
-      # Mount local data directory for CSV files
-      - ./data:/data
-      # Persist HuggingFace dataset cache
-      - neuralgraph-cache:/root/.cache/neuralgraph
+      - ./data-news:/data
     working_dir: /data
+    environment:
+      - NGDB_PATH=/data/graph.ngdb
+      - NGDB_SAVE_INTERVAL=60
+      - NGDB_SAVE_THRESHOLD=5
+      - NGDB_BACKUP_COUNT=3
+      - NGDB_SHUTDOWN_TIMEOUT=30
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - neuralgraph-network
 
-volumes:
-  neuralgraph-cache:
-    driver: local
+  ng-db-papers:
+    image: neuralgraph:0.1.0
+    container_name: ng-db-papers
+    command: ["serve", "--host", "0.0.0.0", "--port", "3000"]
+    ports:
+      - "3001:3000"
+      - "50052:50051"
+    volumes:
+      - ./data-papers:/data
+    working_dir: /data
+    environment:
+      - NGDB_PATH=/data/graph.ngdb
+      - NGDB_SAVE_INTERVAL=60
+      - NGDB_SAVE_THRESHOLD=5
+      - NGDB_BACKUP_COUNT=3
+      - NGDB_SHUTDOWN_TIMEOUT=30
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - neuralgraph-network
+
+networks:
+  neuralgraph-network:
+    driver: bridge

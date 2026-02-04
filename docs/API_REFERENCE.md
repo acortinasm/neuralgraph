@@ -170,20 +170,86 @@ POST /api/bulk-load
 
 ---
 
-#### Health Check
+#### Health Check (Sprint 67)
+
+Returns detailed health status for production monitoring and load balancer integration.
 
 ```
-GET /api/health
+GET /health
 ```
 
 **Response:**
 ```json
 {
   "status": "healthy",
-  "version": "0.9.5",
-  "uptime_seconds": 3600
+  "uptime_seconds": 3600,
+  "database": {
+    "loaded": true,
+    "node_count": 12345,
+    "edge_count": 67890,
+    "path": "data/graph.ngdb"
+  }
 }
 ```
+
+**Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | `"healthy"` or `"degraded"` |
+| `uptime_seconds` | integer | Seconds since server start |
+| `database.loaded` | boolean | Whether database is loaded |
+| `database.node_count` | integer | Total nodes in graph |
+| `database.edge_count` | integer | Total edges in graph |
+| `database.path` | string | Database file path |
+
+---
+
+#### Prometheus Metrics (Sprint 67)
+
+Exports metrics in Prometheus text format for scraping by monitoring systems.
+
+```
+GET /metrics
+```
+
+**Response (text/plain):**
+```
+# HELP neuralgraph_query_total Total number of queries executed
+# TYPE neuralgraph_query_total counter
+neuralgraph_query_total 1234
+
+# HELP neuralgraph_query_latency_seconds Query latency in seconds
+# TYPE neuralgraph_query_latency_seconds histogram
+neuralgraph_query_latency_seconds_bucket{le="0.001"} 500
+neuralgraph_query_latency_seconds_bucket{le="0.01"} 1000
+neuralgraph_query_latency_seconds_sum 12.34
+neuralgraph_query_latency_seconds_count 1234
+
+# HELP neuralgraph_node_count Total number of nodes in the graph
+# TYPE neuralgraph_node_count gauge
+neuralgraph_node_count 12345
+
+# HELP neuralgraph_edge_count Total number of edges in the graph
+# TYPE neuralgraph_edge_count gauge
+neuralgraph_edge_count 67890
+
+# HELP neuralgraph_cache_hits_total Total number of cache hits
+# TYPE neuralgraph_cache_hits_total counter
+neuralgraph_cache_hits_total 5000
+```
+
+**Available Metrics:**
+| Metric | Type | Description |
+|--------|------|-------------|
+| `neuralgraph_query_total` | Counter | Total queries executed |
+| `neuralgraph_query_latency_seconds` | Histogram | Query latency distribution |
+| `neuralgraph_node_count` | Gauge | Total nodes in graph |
+| `neuralgraph_edge_count` | Gauge | Total edges in graph |
+| `neuralgraph_cache_hits_total` | Counter | Cache hit count |
+| `neuralgraph_cache_misses_total` | Counter | Cache miss count |
+| `neuralgraph_cache_size` | Gauge | Current cache size |
+| `neuralgraph_vectors_total` | Gauge | Total indexed vectors |
+| `neuralgraph_active_connections` | Gauge | Active gRPC connections |
 
 ---
 
@@ -457,3 +523,5 @@ curl http://localhost:3000/api/health
 | 0.9 | Initial REST and Arrow Flight APIs |
 | 0.9.2 | Added parameterized queries |
 | 0.9.5 | Performance improvements, batch loading |
+| 0.9.9 | /api/schema endpoint for LangChain integration |
+| 0.9.10 | /health and /metrics endpoints for production observability |

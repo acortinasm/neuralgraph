@@ -39,6 +39,7 @@
 - **Incremental Persistence** - Delta checkpoints for efficient saves
 - **Structured Logging** - Configurable logging with `tracing` crate
 - **Unified Configuration** - TOML config with environment variable overrides
+- **Production Observability** - `/health` and `/metrics` endpoints for monitoring
 
 ## Quick Start
 

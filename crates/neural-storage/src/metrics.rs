@@ -109,6 +109,14 @@ pub struct MetricsRegistry {
     cluster_healthy_nodes: IntGauge,
     /// Client requests by status (success/failure).
     raft_client_requests: IntCounterVec,
+
+    // =========================================================================
+    // Graph Statistics Gauges (Sprint 67)
+    // =========================================================================
+    /// Total nodes in the graph.
+    node_count: IntGauge,
+    /// Total edges in the graph.
+    edge_count: IntGauge,
 }
 
 #[cfg(feature = "metrics")]
@@ -221,6 +229,17 @@ impl MetricsRegistry {
             &["status"], // "success" or "failure"
         )?;
 
+        // Graph statistics gauges
+        let node_count = IntGauge::new(
+            "neuralgraph_node_count",
+            "Total number of nodes in the graph",
+        )?;
+
+        let edge_count = IntGauge::new(
+            "neuralgraph_edge_count",
+            "Total number of edges in the graph",
+        )?;
+
         // Register all metrics
         registry.register(Box::new(query_latency.clone()))?;
         registry.register(Box::new(query_count.clone()))?;
@@ -236,6 +255,8 @@ impl MetricsRegistry {
         registry.register(Box::new(cluster_node_count.clone()))?;
         registry.register(Box::new(cluster_healthy_nodes.clone()))?;
         registry.register(Box::new(raft_client_requests.clone()))?;
+        registry.register(Box::new(node_count.clone()))?;
+        registry.register(Box::new(edge_count.clone()))?;
 
         Ok(Self {
             registry,
@@ -253,6 +274,8 @@ impl MetricsRegistry {
             cluster_node_count,
             cluster_healthy_nodes,
             raft_client_requests,
+            node_count,
+            edge_count,
         })
     }
 
@@ -361,6 +384,20 @@ impl MetricsRegistry {
     pub fn record_client_request_failure(&self) {
         self.raft_client_requests.with_label_values(&["failure"]).inc();
     }
+
+    // =========================================================================
+    // Graph Statistics Gauges (Sprint 67)
+    // =========================================================================
+
+    /// Sets the total node count.
+    pub fn set_node_count(&self, count: usize) {
+        self.node_count.set(count as i64);
+    }
+
+    /// Sets the total edge count.
+    pub fn set_edge_count(&self, count: usize) {
+        self.edge_count.set(count as i64);
+    }
 }
 
 #[cfg(feature = "metrics")]
@@ -450,6 +487,10 @@ impl MetricsRegistry {
     pub fn record_client_request_success(&self) {}
     /// No-op: Records a failed client request.
     pub fn record_client_request_failure(&self) {}
+    /// No-op: Sets the node count.
+    pub fn set_node_count(&self, _count: usize) {}
+    /// No-op: Sets the edge count.
+    pub fn set_edge_count(&self, _count: usize) {}
 }
 
 // =============================================================================

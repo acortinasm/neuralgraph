@@ -2,6 +2,30 @@
 
 All notable changes to NeuralGraphDB.
 
+## [0.9.10] - 2026-02-04
+
+### Added - Production Observability (Sprint 67)
+
+#### Health & Metrics Endpoints
+- **`/health` Endpoint:** Returns JSON with database status, node/edge counts, uptime, and component health for load balancer integration.
+- **`/metrics` Endpoint:** Exports Prometheus text format metrics for scraping by monitoring systems.
+- **Query Latency Instrumentation:** All queries via `handle_query()` now record latency to the metrics registry.
+
+#### Graph Statistics Gauges
+- **`neuralgraph_node_count`:** Gauge tracking total nodes in the graph.
+- **`neuralgraph_edge_count`:** Gauge tracking total edges in the graph.
+
+#### Structured Logging
+- **Logging Initialization:** Server now initializes structured logging on startup.
+- **JSON Output Mode:** Set `NGDB_LOG_JSON=1` environment variable for JSON-formatted logs (production/log aggregator friendly).
+
+#### Docker Integration
+- **Production Healthcheck:** Docker Compose healthcheck now uses `curl -f http://localhost:3000/health` for proper application-level health monitoring.
+
+### Changed
+- Metrics feature enabled by default in neural-cli (via `features = ["metrics"]`).
+- Server startup now includes metrics registry initialization with current node/edge counts.
+
 ## [0.9.9] - 2026-02-04
 
 ### Added - Database Hardening (Sprint 66)

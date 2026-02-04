@@ -15,7 +15,7 @@ use neural_storage::csv_loader::{load_nodes_csv, load_edges_csv};
 use neural_core::{Graph, Label, NodeId};
 use neural_executor::{execute_statement_from_ast, execute_query_from_ast, StatementResult};
 use neural_parser::Statement;
-use neural_storage::{BackupConfig, GraphStore, VectorIndex};
+use neural_storage::{BackupConfig, GraphStore, MetricsRegistry, VectorIndex};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -116,6 +116,10 @@ pub struct AppState {
     pub mutation_count: AtomicU64,
     /// Persistence configuration
     pub config: PersistenceConfig,
+    /// Metrics registry for observability (Sprint 67)
+    pub metrics: Arc<MetricsRegistry>,
+    /// Server start time for uptime calculation (Sprint 67)
+    pub start_time: std::time::Instant,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -210,6 +214,11 @@ pub fn load_data(config: PersistenceConfig) -> Result<AppState, Box<dyn std::err
     // Load embeddings if available
     let (vector_index, paper_embeddings) = load_embeddings(&papers);
 
+    // Initialize metrics registry (Sprint 67)
+    let metrics = Arc::new(MetricsRegistry::new().expect("Failed to create metrics registry"));
+    metrics.set_node_count(store.node_count());
+    metrics.set_edge_count(store.edge_count());
+
     Ok(AppState {
         store: Arc::new(RwLock::new(store)),
         vector_index,
@@ -217,6 +226,8 @@ pub fn load_data(config: PersistenceConfig) -> Result<AppState, Box<dyn std::err
         papers,
         mutation_count: AtomicU64::new(0),
         config,
+        metrics,
+        start_time: std::time::Instant::now(),
     })
 }
 
@@ -315,6 +326,10 @@ fn load_embeddings(papers: &[PaperInfo]) -> (VectorIndex, HashMap<String, Vec<f3
 pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(index_handler))
+        // Observability endpoints (Sprint 67)
+        .route("/health", get(handle_health))
+        .route("/metrics", get(handle_metrics))
+        // API endpoints
         .route("/api/papers", get(list_papers))
         .route("/api/search", post(search_papers))
         .route("/api/similar/{id}", get(similar_papers))
@@ -328,6 +343,46 @@ pub fn create_router(state: Arc<AppState>) -> Router {
 /// Serves the main HTML page
 async fn index_handler() -> Html<&'static str> {
     Html(include_str!("../static/index.html"))
+}
+
+// =============================================================================
+// Health & Metrics Handlers (Sprint 67)
+// =============================================================================
+
+/// Returns health status for production monitoring and load balancer health checks.
+async fn handle_health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
+    let store = state.store.read().await;
+    let node_count = store.node_count();
+    let edge_count = store.edge_count();
+    let uptime = state.start_time.elapsed().as_secs();
+
+    // Update metrics with current counts
+    state.metrics.set_node_count(node_count);
+    state.metrics.set_edge_count(edge_count);
+
+    Json(HealthResponse {
+        status: "healthy".to_string(),
+        uptime_seconds: uptime,
+        database: DatabaseHealth {
+            loaded: true,
+            node_count,
+            edge_count,
+            path: state.config.db_path.display().to_string(),
+        },
+    })
+}
+
+/// Exports metrics in Prometheus text format for scraping.
+async fn handle_metrics(State(state): State<Arc<AppState>>) -> Result<String, (StatusCode, String)> {
+    // Update graph statistics before export
+    let store = state.store.read().await;
+    state.metrics.set_node_count(store.node_count());
+    state.metrics.set_edge_count(store.edge_count());
+    drop(store);
+
+    state.metrics.export().map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to export metrics: {}", e))
+    })
 }
 
 /// Lists all papers
@@ -508,6 +563,34 @@ pub struct QueryResponse {
     pub execution_time_ms: f64,
 }
 
+// =============================================================================
+// Health & Metrics Response Types (Sprint 67)
+// =============================================================================
+
+/// Health check response for production monitoring.
+#[derive(Debug, Serialize)]
+pub struct HealthResponse {
+    /// Overall health status: "healthy" or "degraded"
+    pub status: String,
+    /// Server uptime in seconds
+    pub uptime_seconds: u64,
+    /// Database health details
+    pub database: DatabaseHealth,
+}
+
+/// Database health details.
+#[derive(Debug, Serialize)]
+pub struct DatabaseHealth {
+    /// Whether the database is loaded and operational
+    pub loaded: bool,
+    /// Total number of nodes
+    pub node_count: usize,
+    /// Total number of edges
+    pub edge_count: usize,
+    /// Database file path
+    pub path: String,
+}
+
 /// Schema response for LangChain integration (Sprint 65)
 #[derive(Debug, Serialize)]
 pub struct SchemaResponse {
@@ -661,7 +744,11 @@ async fn handle_query(
         }
     };
 
-    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+    let elapsed = start.elapsed();
+    let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+
+    // Record query latency to metrics (Sprint 67)
+    state.metrics.record_query_latency(elapsed);
 
     // 3. Format response
     match res {
@@ -919,6 +1006,13 @@ pub async fn run_server_with_path(port: u16, db_path: &str) -> Result<(), Box<dy
 
 /// Starts the web server with full configuration control.
 pub async fn run_server_with_config(port: u16, config: PersistenceConfig) -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize structured logging (Sprint 67)
+    if std::env::var("NGDB_LOG_JSON").is_ok() {
+        neural_storage::logging::init_json();
+    } else {
+        neural_storage::logging::init();
+    }
+
     let state = Arc::new(load_data(config.clone())?);
     let app = create_router(state.clone());
 

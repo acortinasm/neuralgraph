@@ -1,6 +1,6 @@
 # Phase 7: Scale & Production Roadmap
 
-**Status:** Planning
+**Status:** In Progress (Sprint 67)
 **Target:** v1.0.0 (Enterprise Release)
 **Focus:** Reliability, Horizontal Scalability, and Temporal Analysis.
 
@@ -80,6 +80,58 @@ We will implement/integrate a Raft layer to manage the WAL.
     *   Map `timestamp` to `TxId`.
     *   Planner update to inject version constraints into scans.
     *   "Flashback" feature to revert database state.
+
+### **Sprint 55-61: Distributed Infrastructure** - ✅ Completed
+**Goal:** Horizontal scaling and distributed vector search.
+*   **Deliverables:**
+    *   Shard hints for data partitioning
+    *   Embedding metadata system
+    *   Graph sharding coordinator
+    *   Query latency optimization (51% improvement)
+    *   Flash quantization (4-32x memory savings)
+    *   Distributed vector search gRPC server
+
+### **Sprint 62-63: Full-Text Search** - ✅ Completed
+**Goal:** Production-grade text search capabilities.
+*   **Deliverables:**
+    *   Tantivy-based full-text index
+    *   Fuzzy matching with Levenshtein distance
+    *   Phonetic search (Soundex, Metaphone, DoubleMetaphone)
+    *   Support for 18 languages
+
+### **Sprint 64: Complex Data Types** - ✅ Completed
+**Goal:** Array and Map property support.
+*   **Deliverables:**
+    *   `PropertyValue::Array` for heterogeneous lists
+    *   `PropertyValue::Map` for nested structures
+    *   JSON-compatible serialization
+
+### **Sprint 65: LangChain Integration** - ✅ Completed
+**Goal:** Native integration with LangChain for GraphRAG.
+*   **Deliverables:**
+    *   `NeuralGraphStore` class
+    *   `GraphCypherQAChain` adapter
+    *   `/api/schema` endpoint
+    *   Python client chains module
+
+### **Sprint 66: Database Hardening** - ✅ Completed
+**Goal:** Data integrity and configuration management.
+*   **Deliverables:**
+    *   WAL CRC32 checksums for corruption detection
+    *   SHA256 snapshot checksums
+    *   Delta checkpoints for incremental persistence
+    *   Unified TOML configuration with env var overrides
+    *   Memory tracking with limits
+    *   Unique constraint system
+
+### **Sprint 67: Production Observability** - ✅ Completed
+**Goal:** Production-ready monitoring and health checking.
+*   **Deliverables:**
+    *   `/health` endpoint for load balancer integration
+    *   `/metrics` endpoint with Prometheus format
+    *   Query latency instrumentation
+    *   Structured logging with JSON output option
+    *   Docker healthcheck integration
 
 ---
 

@@ -2,7 +2,7 @@
 
 > The Graph Database for AI Applications
 
-**Version**: 0.9.9
+**Version**: 0.9.10
 **Last Updated**: February 2026
 
 ---
@@ -1039,6 +1039,96 @@ NeuralGraphDB exposes metrics for monitoring cluster and vector search performan
 - `neuralgraph_vector_search_total` - Total searches
 - `neuralgraph_vector_cache_hits_total` - Cache hit count
 - `neuralgraph_vector_cache_misses_total` - Cache miss count
+
+### Production Observability (Sprint 67)
+
+NeuralGraphDB includes production-ready observability features for monitoring and health checking.
+
+#### Health Endpoint
+
+Check if the server is healthy:
+
+```bash
+curl http://localhost:3000/health
+```
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "uptime_seconds": 3600,
+  "database": {
+    "loaded": true,
+    "node_count": 12345,
+    "edge_count": 67890,
+    "path": "data/graph.ngdb"
+  }
+}
+```
+
+Use this endpoint for:
+- Load balancer health checks
+- Kubernetes liveness probes
+- Monitoring dashboards
+
+#### Metrics Endpoint
+
+Scrape Prometheus-format metrics:
+
+```bash
+curl http://localhost:3000/metrics
+```
+
+Key metrics exported:
+| Metric | Type | Description |
+|--------|------|-------------|
+| `neuralgraph_query_total` | Counter | Total queries executed |
+| `neuralgraph_query_latency_seconds` | Histogram | Query latency distribution |
+| `neuralgraph_node_count` | Gauge | Total nodes in graph |
+| `neuralgraph_edge_count` | Gauge | Total edges in graph |
+| `neuralgraph_cache_hits_total` | Counter | Cache hits |
+| `neuralgraph_cache_misses_total` | Counter | Cache misses |
+
+#### Structured Logging
+
+Configure logging format via environment variable:
+
+```bash
+# Standard format (default)
+export NGDB_LOG=info
+neuralgraph serve 3000
+
+# JSON format (for log aggregators like ELK, Datadog)
+export NGDB_LOG_JSON=1
+export NGDB_LOG=info
+neuralgraph serve 3000
+```
+
+#### Docker Health Checks
+
+Docker Compose includes proper health checks:
+
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 10s
+```
+
+#### Prometheus/Grafana Integration
+
+Example Prometheus scrape config:
+
+```yaml
+scrape_configs:
+  - job_name: 'neuralgraph'
+    static_configs:
+      - targets: ['localhost:3000']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+```
 
 ---
 
