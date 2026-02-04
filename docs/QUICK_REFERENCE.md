@@ -1,4 +1,4 @@
-# NeuralGraphDB Quick Reference (v0.9.8)
+# NeuralGraphDB Quick Reference (v0.9.9)
 
 ## Shell Commands
 
@@ -258,6 +258,43 @@ neuralgraph cluster remove <addr> <id>    # Remove node from cluster
 
 ---
 
+## Constraints (Sprint 66)
+
+```cypher
+-- Create unique constraint
+CALL neural.constraint.createUnique('person_email', 'email', 'Person')
+
+-- List constraints
+CALL neural.constraint.list()
+
+-- Drop constraint
+CALL neural.constraint.drop('person_email')
+```
+
+---
+
+## Configuration (Sprint 66)
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NGDB__STORAGE__PATH` | `data/graph.ngdb` | Database path |
+| `NGDB__PERSISTENCE__SAVE_INTERVAL_SECS` | `60` | Auto-save interval |
+| `NGDB__PERSISTENCE__CHECKSUM_ENABLED` | `true` | SHA256 checksums |
+| `NGDB__MEMORY__LIMIT_MB` | `0` | Memory limit (0=unlimited) |
+| `NGDB_LOG` | `info` | Log level |
+
+### Logging
+
+```bash
+export NGDB_LOG=info                                 # Default
+export NGDB_LOG=debug                                # Verbose
+export NGDB_LOG=neural_storage::wal=debug,info      # Module-specific
+```
+
+---
+
 ## REST API
 
 ```bash
@@ -279,4 +316,7 @@ curl -X POST http://localhost:3000/api/query \
 | Boolean | `true`, `false` |
 | Date | `date("2026-01-28")` |
 | DateTime | `datetime()` |
+| Array | `["a", "b", "c"]` |
+| Map | `{key: "value", debug: true}` |
+| Vector | `[0.1, 0.2, 0.3]` (numeric arrays) |
 | Null | `null` |

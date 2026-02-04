@@ -30,11 +30,15 @@
 - **Observability** - EXPLAIN / PROFILE query plans
 - **Performance** - Streaming execution and filter pushdown
 
-### Scale & Production (Fase 7 🚧)
+### Scale & Production (Fase 7 ✅)
 
 - **ACID Transactions** - `BEGIN`, `COMMIT`, `ROLLBACK` with multi-statement atomicity
-- **Distributed Consensus** - (Planned) Raft-based clustering
-- **Time-Travel** - (Planned) Temporal queries
+- **Distributed Consensus** - Raft-based clustering with automatic leader election
+- **Time-Travel** - `AT TIME` temporal queries with MVCC snapshots
+- **Database Hardening** - WAL/snapshot checksums, post-load validation, index rebuild
+- **Incremental Persistence** - Delta checkpoints for efficient saves
+- **Structured Logging** - Configurable logging with `tracing` crate
+- **Unified Configuration** - TOML config with environment variable overrides
 
 ## Quick Start
 

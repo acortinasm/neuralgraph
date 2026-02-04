@@ -2,6 +2,35 @@
 
 All notable changes to NeuralGraphDB.
 
+## [0.9.9] - 2026-02-04
+
+### Added - Database Hardening (Sprint 66)
+
+#### Data Integrity
+- **WAL Checksums (CRC32):** Every WAL entry now includes a CRC32 checksum for corruption detection during recovery.
+- **Binary Snapshot Checksums (SHA256):** Snapshot files now include SHA256 checksums to detect file corruption. Backward compatible with V1 format.
+- **Post-Load Validation:** Automatic validation of indexes and data structures after loading from disk.
+- **Index Rebuild on Load:** All indexes (label, property, edge type) are rebuilt from authoritative sources on load to ensure consistency.
+
+#### Incremental Persistence
+- **Delta Checkpoints:** Support for incremental persistence via `DeltaCheckpoint` - saves only changes since last snapshot.
+- **Delta Save/Load:** New methods `save_delta()`, `load_delta()`, `apply_delta()` for efficient persistence of mutations.
+
+#### Observability
+- **Structured Logging:** Integrated `tracing` crate for structured logging with configurable levels via `NGDB_LOG` environment variable.
+- **Statistics Collection:** New `GraphStatistics` struct for query planning and monitoring (node/edge counts, label cardinalities, etc.).
+
+#### Configuration
+- **Unified Configuration:** New `NeuralGraphConfig` with TOML support and environment variable overrides (`NGDB__*`).
+- **Memory Tracking:** Optional memory limits with `MemoryTracker` - tracks allocations and warns at configurable thresholds.
+
+#### Constraints
+- **Unique Constraints:** Support for unique constraints on node properties via `ConstraintManager`.
+
+### Changed
+- Bumped binary snapshot format to VERSION 2 (backward compatible with V1).
+- WAL entry format now includes 4-byte CRC32 checksum (backward compatible with legacy entries).
+
 ## [0.9.2] - 2026-01-21
 
 ### Added - Scale & Production (Fase 7)

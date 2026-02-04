@@ -3,7 +3,7 @@
 > The Graph Database for AI Applications
 
 **Version**: 0.9.9
-**Last Updated**: January 2026
+**Last Updated**: February 2026
 
 ---
 
@@ -486,6 +486,43 @@ ROLLBACK
 | **Isolated** | Concurrent transactions don't interfere |
 | **Durable** | Committed data survives crashes |
 
+### Constraints
+
+NeuralGraphDB supports unique constraints to enforce data integrity.
+
+#### Creating Unique Constraints
+
+```cypher
+-- Ensure email is unique across all Person nodes
+CALL neural.constraint.createUnique('person_email', 'email', 'Person')
+
+-- Ensure ID is unique across all nodes (no label filter)
+CALL neural.constraint.createUnique('global_id', 'id')
+```
+
+#### Constraint Enforcement
+
+When a unique constraint exists, attempting to create a duplicate value fails:
+
+```cypher
+-- First insert succeeds
+CREATE (n:Person {email: "alice@example.com"})
+
+-- Second insert with same email fails
+CREATE (n:Person {email: "alice@example.com"})
+-- Error: Unique constraint 'person_email' violated
+```
+
+#### Managing Constraints
+
+```cypher
+-- List all constraints
+CALL neural.constraint.list()
+
+-- Drop a constraint
+CALL neural.constraint.drop('person_email')
+```
+
 ---
 
 ## 7. Full-Text Search
@@ -856,6 +893,62 @@ neuralgraph serve-flight 50051
 neuralgraph serve-raft 1 50052
 ```
 
+### Configuration
+
+NeuralGraphDB can be configured via TOML files or environment variables.
+
+#### Configuration File
+
+Create a `neuralgraph.toml` file:
+
+```toml
+[storage]
+path = "data/graph.ngdb"
+
+[persistence]
+save_interval_secs = 60
+mutation_threshold = 100
+backup_count = 3
+checksum_enabled = true
+
+[memory]
+limit_mb = 4096
+warn_percent = 80
+
+[logging]
+level = "info"
+format = "pretty"
+```
+
+#### Environment Variables
+
+All settings can be overridden via environment variables with the `NGDB__` prefix:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NGDB__STORAGE__PATH` | `data/graph.ngdb` | Database file path |
+| `NGDB__PERSISTENCE__SAVE_INTERVAL_SECS` | `60` | Seconds between auto-saves |
+| `NGDB__PERSISTENCE__MUTATION_THRESHOLD` | `100` | Mutations before auto-save |
+| `NGDB__PERSISTENCE__BACKUP_COUNT` | `3` | Backup copies to retain |
+| `NGDB__PERSISTENCE__CHECKSUM_ENABLED` | `true` | Enable SHA256 checksums |
+| `NGDB__MEMORY__LIMIT_MB` | `0` (unlimited) | Memory limit in MB |
+| `NGDB__MEMORY__WARN_PERCENT` | `80` | Warning threshold |
+| `NGDB_LOG` | `info` | Log level (tracing) |
+
+#### Logging
+
+Configure logging via `NGDB_LOG` environment variable:
+
+```bash
+# Basic levels
+export NGDB_LOG=info     # Default
+export NGDB_LOG=debug    # Verbose
+export NGDB_LOG=warn     # Quiet
+
+# Module-specific
+export NGDB_LOG=neural_storage::wal=debug,info  # Debug WAL, info for rest
+```
+
 ### Backup and Restore
 
 ```bash
@@ -865,6 +958,27 @@ neuralgraph serve-raft 1 50052
 # Restore
 :loadbin backup_2026-01-28.ngdb
 ```
+
+### Delta Checkpoints (Incremental Saves)
+
+For large databases, use delta checkpoints for faster saves:
+
+```bash
+# Save only changes since last snapshot
+:save-delta data/graph.ngdb
+
+# List available deltas
+:list-deltas data/graph.ngdb
+```
+
+### Data Integrity
+
+NeuralGraphDB includes automatic data integrity features:
+
+- **WAL Checksums:** CRC32 checksums on every WAL entry detect corruption during recovery
+- **Snapshot Checksums:** SHA256 checksums on binary snapshots detect file corruption
+- **Index Rebuild:** All indexes are rebuilt from authoritative data on load
+- **Post-Load Validation:** Automatic validation after loading ensures data consistency
 
 ### Monitoring
 

@@ -1,4 +1,6 @@
 pub mod community;
+pub mod config;
+pub mod constraints;
 pub mod csc;
 pub mod csr;
 pub mod csv_loader;
@@ -7,7 +9,9 @@ pub mod full_text_index;
 pub mod graph_store;
 pub mod hf_loader;
 pub mod la;
+pub mod logging;
 pub mod lsm_vec;
+pub mod memory;
 pub mod llm;
 pub mod metrics;
 pub mod mvcc;
@@ -17,6 +21,7 @@ pub mod pma;
 pub mod properties;
 pub mod raft;
 pub mod sharding;
+pub mod statistics;
 pub mod transaction;
 pub mod vector_index;
 pub mod wal;
@@ -45,8 +50,8 @@ pub use full_text_index::{
     FullTextIndex, FullTextIndexConfig, FullTextIndexMetadata, FullTextError,
     SearchResult as FullTextSearchResult, Language as FullTextLanguage,
 };
-pub use persistence::{BackupConfig, GraphSnapshot, PersistenceError};
-pub use graph_store::{EdgeTypeIndex, LabelIndex, PropertyIndex, TimestampIndex};
+pub use persistence::{BackupConfig, DeltaCheckpoint, GraphSnapshot, PersistenceError};
+pub use graph_store::{EdgeTypeIndex, LabelIndex, PropertyIndex, TimestampIndex, ValidationResult, ValidationError};
 
 #[cfg(test)]
 mod tests {

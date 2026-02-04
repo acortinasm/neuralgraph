@@ -24,6 +24,8 @@ pub enum WalError {
     Serialization(#[from] bincode::Error),
     #[error("Failed to serialize membership config: {0}")]
     MembershipSerialization(String),
+    #[error("Checksum mismatch at offset {offset}: expected {expected:#x}, got {computed:#x}")]
+    ChecksumMismatch { offset: u64, expected: u32, computed: u32 },
 }
 
 /// Represents a single, atomic mutation to the graph.
@@ -115,14 +117,25 @@ impl WalWriter {
     ///
     /// Serializes the entry, writes it to the buffer, and flushes to disk
     /// to guarantee durability.
+    ///
+    /// ## Entry Format (V2 with checksums)
+    /// ```text
+    /// [8 bytes: length] [4 bytes: CRC32] [N bytes: bincode payload]
+    /// ```
+    /// Length = 4 (checksum) + N (payload)
     pub fn log(&mut self, entry: &LogEntry) -> Result<(), WalError> {
-        // We must serialize with a size header to know how many bytes to read
-        // during recovery.
         let encoded: Vec<u8> = bincode::serialize(entry)?;
-        let len = encoded.len() as u64;
+
+        // Compute CRC32 checksum of the payload
+        let checksum = crc32fast::hash(&encoded);
+
+        // Length = checksum (4) + payload (N)
+        let len = (encoded.len() + 4) as u64;
 
         // Write length prefix
         self.writer.write_all(&len.to_le_bytes())?;
+        // Write checksum
+        self.writer.write_all(&checksum.to_le_bytes())?;
         // Write payload
         self.writer.write_all(&encoded)?;
         // IMPORTANT: Flush to disk to ensure durability

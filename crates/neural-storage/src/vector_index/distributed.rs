@@ -444,10 +444,11 @@ impl DistributedVectorIndex {
 
         // Log if we had partial results
         if successful_shards < self.config.num_shards as usize {
-            // In production, use proper logging
-            eprintln!(
-                "Distributed search: {}/{} shards responded, {} total results",
-                successful_shards, self.config.num_shards, total_results
+            tracing::warn!(
+                successful_shards = successful_shards,
+                total_shards = self.config.num_shards,
+                total_results = total_results,
+                "Distributed search had partial results"
             );
         }
 
@@ -484,9 +485,9 @@ impl std::fmt::Debug for DistributedVectorIndex {
     }
 }
 
-/// Log search errors (placeholder for proper tracing integration).
+/// Log search errors using structured tracing.
 fn tracing_error(shard_id: ShardId, error: &VectorClientError) {
-    eprintln!("Shard {} search error: {}", shard_id, error);
+    tracing::error!(shard_id = shard_id, error = %error, "Shard search error");
 }
 
 // =============================================================================

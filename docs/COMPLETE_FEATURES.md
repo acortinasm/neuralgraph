@@ -1,10 +1,10 @@
-# NeuralGraphDB v0.9.8 - Documentación Completa de Funcionalidades
+# NeuralGraphDB v0.9.9 - Documentación Completa de Funcionalidades
 
 > Base de datos de grafos nativa en Rust para cargas de trabajo de IA
 
-**Versión**: 0.9.8
-**Fecha**: 2026-01-29
-**Estado**: Fase 7 (Paridad Competitiva y Escala) - Sprint 65
+**Versión**: 0.9.9
+**Fecha**: 2026-02-04
+**Estado**: Fase 7 (Paridad Competitiva y Escala) - Sprint 66 (Database Hardening)
 
 ---
 
@@ -95,6 +95,11 @@ neuralgraph/
 │   │   │   ├── lsm_vec.rs        # LSM vector storage
 │   │   │   ├── pma.rs            # Packed Memory Arrays
 │   │   │   ├── metrics.rs        # Prometheus metrics
+│   │   │   ├── config.rs         # Unified TOML configuration (Sprint 66)
+│   │   │   ├── logging.rs        # Structured logging with tracing (Sprint 66)
+│   │   │   ├── memory.rs         # Memory tracking and limits (Sprint 66)
+│   │   │   ├── constraints.rs    # Unique constraint system (Sprint 66)
+│   │   │   ├── statistics.rs     # Graph statistics collection (Sprint 66)
 │   │   │   │
 │   │   │   ├── full_text_index/  # Búsqueda full-text
 │   │   │   │   ├── mod.rs        # FullTextIndex, SearchResult, search_fuzzy
@@ -1666,41 +1671,54 @@ impl GraphStore {
 
 ### 9.1 Formato Binario (.ngdb)
 
+**VERSION 2 (Sprint 66 - con SHA256 checksum):**
+
 ```
 ┌─────────────────────────────────┐
 │ Magic Bytes: "NGDB" (4 bytes)   │
 ├─────────────────────────────────┤
-│ Version: u32 (4 bytes, LE)      │
+│ Version: u32 (4 bytes, LE) = 2  │
+├─────────────────────────────────┤
+│ SHA256: [u8; 32] (32 bytes)     │  ← NEW: Checksum de integridad
 ├─────────────────────────────────┤
 │ Data: bincode-encoded GraphStore│
 │ (variable length)               │
 └─────────────────────────────────┘
 ```
 
+**Backward Compatibility:** VERSION 1 (sin checksum) sigue soportado.
+
 **Operaciones:**
 
 ```rust
 impl GraphStore {
-    /// Guardar a archivo binario
-    pub fn save_binary(&self, path: &str) -> Result<()>;
+    /// Guardar a archivo binario con checksum SHA256
+    pub fn save_binary_atomic(&mut self, path: &str) -> Result<()>;
 
-    /// Cargar desde archivo binario
+    /// Cargar desde archivo binario (verifica checksum si V2)
     pub fn load_binary(path: &str) -> Result<Self>;
+
+    /// Validar integridad después de cargar
+    pub fn validate_post_load(&self) -> ValidationResult;
 }
 ```
 
 ### 9.2 Write-Ahead Log (WAL)
 
-**Formato de entrada:**
+**Formato de entrada (Sprint 66 - con CRC32 checksum):**
 
 ```
 ┌─────────────────────────────────┐
-│ Length: u64 (8 bytes, LE)       │
+│ Length: u64 (8 bytes, LE)       │  ← Incluye checksum + payload
+├─────────────────────────────────┤
+│ CRC32: u32 (4 bytes, LE)        │  ← NEW: Checksum de integridad
 ├─────────────────────────────────┤
 │ Payload: bincode LogEntry       │
-│ (length bytes)                  │
+│ (length - 4 bytes)              │
 └─────────────────────────────────┘
 ```
+
+**Backward Compatibility:** Entradas legacy (sin checksum) se detectan y procesan sin verificación.
 
 **Tipos de LogEntry:**
 
@@ -1732,14 +1750,157 @@ impl GraphStore {
 }
 ```
 
-### 9.3 Garantías ACID
+### 9.3 Delta Checkpoints (Sprint 66)
+
+Persistencia incremental que guarda solo los cambios desde el último snapshot completo:
+
+```rust
+#[derive(Serialize, Deserialize)]
+pub struct DeltaCheckpoint {
+    pub base_tx_id: TransactionId,    // TX del snapshot base
+    pub end_tx_id: TransactionId,     // TX después de aplicar delta
+    pub changes: Vec<LogEntry>,       // Cambios a aplicar
+}
+
+impl GraphStore {
+    /// Crear delta desde una transacción específica
+    pub fn create_delta_checkpoint(&self, since_tx: TransactionId) -> DeltaCheckpoint;
+
+    /// Aplicar delta a un snapshot cargado
+    pub fn apply_delta(&mut self, delta: &DeltaCheckpoint) -> Result<()>;
+
+    /// Guardar delta a directorio
+    pub fn save_delta(&self, base_path: &Path, since_tx: TransactionId) -> Result<PathBuf>;
+}
+```
+
+**Estructura de archivos:**
+
+```
+data/
+├── graph.ngdb                    # Snapshot completo
+└── deltas/
+    ├── delta_1000_2000.ngdb      # Cambios de tx 1000 a 2000
+    └── delta_2000_3000.ngdb      # Cambios de tx 2000 a 3000
+```
+
+### 9.4 Garantías ACID
 
 | Propiedad | Implementación |
 |-----------|----------------|
 | **Atomicity** | Buffer de transacciones; commit aplica todo o nada |
-| **Consistency** | WAL write antes de modificar memoria |
+| **Consistency** | WAL write con CRC32 antes de modificar memoria |
 | **Isolation** | MVCC + Snapshot Isolation |
-| **Durability** | Flush explícito en cada entrada de WAL |
+| **Durability** | Flush explícito + fsync + SHA256 checksum en snapshots |
+
+### 9.5 Integridad de Datos (Sprint 66)
+
+| Feature | Implementación |
+|---------|----------------|
+| **WAL Checksums** | CRC32 en cada entrada de WAL |
+| **Snapshot Checksums** | SHA256 en archivos .ngdb |
+| **Index Rebuild** | Reconstrucción de índices al cargar |
+| **Post-Load Validation** | Verificación de integridad post-carga |
+| **Delta Persistence** | Persistencia incremental eficiente |
+
+### 9.6 Configuración y Observabilidad (Sprint 66)
+
+#### Configuración Unificada
+
+```toml
+# neuralgraph.toml
+[storage]
+path = "data/graph.ngdb"
+
+[persistence]
+save_interval_secs = 60
+mutation_threshold = 100
+backup_count = 3
+checksum_enabled = true
+
+[memory]
+limit_mb = 4096
+warn_percent = 80
+
+[logging]
+level = "info"
+format = "pretty"
+```
+
+**Variables de entorno:** Todas las opciones se pueden sobrescribir con `NGDB__*`:
+
+```bash
+export NGDB__PERSISTENCE__CHECKSUM_ENABLED=true
+export NGDB__MEMORY__LIMIT_MB=8192
+export NGDB_LOG=debug
+```
+
+#### Logging Estructurado
+
+```rust
+use neural_storage::logging;
+
+// Inicializar con configuración de entorno
+logging::init();  // Lee NGDB_LOG
+
+// O con nivel específico
+logging::init_with_default("info");
+
+// Formato JSON para producción
+logging::init_json();
+```
+
+#### Estadísticas del Grafo
+
+```rust
+#[derive(Serialize, Deserialize)]
+pub struct GraphStatistics {
+    pub node_count: usize,
+    pub edge_count: usize,
+    pub label_cardinalities: HashMap<String, usize>,
+    pub property_cardinalities: HashMap<String, usize>,
+    pub edge_type_cardinalities: HashMap<String, usize>,
+    pub avg_out_degree: f64,
+    pub max_out_degree: usize,
+    pub last_updated: Option<String>,
+}
+
+impl GraphStore {
+    pub fn collect_statistics(&mut self);
+    pub fn estimate_label_cardinality(&self, label: &str) -> usize;
+}
+```
+
+### 9.7 Sistema de Constraints (Sprint 66)
+
+```rust
+pub enum ConstraintType {
+    Unique { property: String, label: Option<String> },
+}
+
+impl ConstraintManager {
+    /// Crear constraint de unicidad
+    pub fn create_unique(&mut self, name: &str, property: &str, label: Option<&str>)
+        -> Result<(), ConstraintError>;
+
+    /// Validar antes de insertar
+    pub fn validate_insert(&self, node_id: NodeId, label: Option<&str>,
+        props: &[(String, PropertyValue)]) -> Result<(), ConstraintError>;
+}
+```
+
+**Uso en NGQL:**
+
+```cypher
+-- Crear constraint de unicidad
+CALL neural.constraint.createUnique('person_email', 'email', 'Person')
+
+-- Listar constraints
+CALL neural.constraint.list()
+
+-- Eliminar constraint
+CALL neural.constraint.drop('person_email')
+```
 
 ---
 

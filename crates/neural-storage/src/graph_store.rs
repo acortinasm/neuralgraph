@@ -439,6 +439,106 @@ impl TimestampIndex {
 }
 
 // =============================================================================
+// Validation Types (Database Hardening)
+// =============================================================================
+
+/// Result of post-load validation checks.
+#[derive(Debug, Clone)]
+pub struct ValidationResult {
+    /// Whether all validation checks passed.
+    pub is_valid: bool,
+    /// Critical errors that indicate data corruption.
+    pub errors: Vec<ValidationError>,
+    /// Non-critical warnings that may indicate inconsistencies.
+    pub warnings: Vec<String>,
+}
+
+impl ValidationResult {
+    /// Creates a successful validation result with no errors or warnings.
+    pub fn ok() -> Self {
+        Self {
+            is_valid: true,
+            errors: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+
+    /// Adds an error to the result and marks it as invalid.
+    pub fn add_error(&mut self, error: ValidationError) {
+        self.is_valid = false;
+        self.errors.push(error);
+    }
+
+    /// Adds a warning to the result.
+    pub fn add_warning(&mut self, warning: String) {
+        self.warnings.push(warning);
+    }
+}
+
+/// Validation errors that indicate data corruption or inconsistency.
+#[derive(Debug, Clone)]
+pub enum ValidationError {
+    /// Label index entry doesn't match versioned_labels.
+    LabelIndexMismatch {
+        node_id: NodeId,
+        expected_label: Option<String>,
+        found_in_index: bool,
+    },
+    /// Property index entry doesn't match versioned_properties.
+    PropertyIndexMismatch {
+        node_id: NodeId,
+        key: String,
+        expected_value: Option<String>,
+        found_in_index: bool,
+    },
+    /// Edge type index count doesn't match dynamic_edges.
+    EdgeTypeIndexMismatch {
+        edge_type: String,
+        expected_count: usize,
+        found_count: usize,
+    },
+    /// CSR matrix structure is invalid.
+    CsrIntegrity(String),
+    /// Timestamp index is not properly sorted.
+    TimestampIndexUnsorted {
+        position: usize,
+        prev_timestamp: String,
+        curr_timestamp: String,
+    },
+    /// Transaction ID inconsistency.
+    TransactionIdInconsistency {
+        message: String,
+    },
+}
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LabelIndexMismatch { node_id, expected_label, found_in_index } => {
+                write!(f, "Label index mismatch for node {}: expected {:?}, found_in_index: {}",
+                    node_id.as_usize(), expected_label, found_in_index)
+            }
+            Self::PropertyIndexMismatch { node_id, key, expected_value, found_in_index } => {
+                write!(f, "Property index mismatch for node {} key '{}': expected {:?}, found_in_index: {}",
+                    node_id.as_usize(), key, expected_value, found_in_index)
+            }
+            Self::EdgeTypeIndexMismatch { edge_type, expected_count, found_count } => {
+                write!(f, "Edge type index mismatch for '{}': expected {} edges, found {}",
+                    edge_type, expected_count, found_count)
+            }
+            Self::CsrIntegrity(msg) => write!(f, "CSR integrity error: {}", msg),
+            Self::TimestampIndexUnsorted { position, prev_timestamp, curr_timestamp } => {
+                write!(f, "Timestamp index unsorted at position {}: '{}' > '{}'",
+                    position, prev_timestamp, curr_timestamp)
+            }
+            Self::TransactionIdInconsistency { message } => {
+                write!(f, "Transaction ID inconsistency: {}", message)
+            }
+        }
+    }
+}
+
+// =============================================================================
 // GraphStore
 // =============================================================================
 
@@ -548,6 +648,14 @@ impl GraphStore {
     ///
     /// This method is called after deserializing a GraphStore from binary format
     /// to rebuild the reverse graph index and other runtime state.
+    ///
+    /// ## Rebuilt Structures
+    /// - `reverse_graph` (CSC matrix for incoming edge queries)
+    /// - `transaction_manager` (fresh state for new transactions)
+    /// - `label_index` (from versioned_labels)
+    /// - `property_index` (from versioned_properties)
+    /// - `edge_type_index` (from dynamic_edges)
+    /// - `full_text_indexes` (from metadata)
     pub fn post_load_init(&mut self) {
         // Rebuild reverse graph (CSC) from CSR for efficient incoming edge queries
         self.reverse_graph = CscMatrix::from_csr(&self.graph);
@@ -555,12 +663,14 @@ impl GraphStore {
         // Initialize transaction manager (skipped during serialization)
         self.transaction_manager = TransactionManager::new();
 
-        // Rebuild label index from versioned_labels to ensure consistency
+        // Rebuild ALL indexes from authoritative sources
         self.rebuild_label_index();
+        self.rebuild_property_index();
+        self.rebuild_edge_type_index();
 
         // Rebuild full-text indexes from metadata
         if let Err(e) = self.rebuild_fulltext_indexes() {
-            eprintln!("Warning: Failed to rebuild full-text indexes: {}", e);
+            tracing::warn!(error = %e, "Failed to rebuild full-text indexes");
         }
     }
 
@@ -586,6 +696,154 @@ impl GraphStore {
 
         // Finalize the index for binary search
         self.label_index.finalize();
+    }
+
+    /// Rebuilds the property index from versioned_properties.
+    ///
+    /// This ensures the property_index is consistent with the actual property data
+    /// stored in versioned_properties, which is the authoritative source.
+    fn rebuild_property_index(&mut self) {
+        // Clear the existing property index
+        self.property_index = PropertyIndex::new();
+
+        // Iterate through all nodes and rebuild the index
+        let total_nodes = self.node_count();
+        for i in 0..total_nodes {
+            let node_id = NodeId::new(i as u64);
+            // Get all properties from versioned_properties (the authoritative source)
+            let props = self.versioned_properties.get_all(node_id, MAX_SNAPSHOT_ID);
+            for (key, value) in props {
+                self.property_index.add(node_id, &key, &value);
+            }
+        }
+
+        // Finalize the index for binary search
+        self.property_index.finalize();
+    }
+
+    /// Rebuilds the edge type index from dynamic_edges.
+    ///
+    /// This ensures the edge_type_index is consistent with the actual edge data
+    /// stored in dynamic_edges, which is the authoritative source for typed edges.
+    fn rebuild_edge_type_index(&mut self) {
+        // Clear the existing edge type index
+        self.edge_type_index = EdgeTypeIndex::new();
+
+        // Rebuild from dynamic_edges (typed edges from CREATE statements)
+        let base_edge_count = self.graph.edge_count();
+        for (i, (source, target, edge_type)) in self.dynamic_edges.iter().enumerate() {
+            if let Some(et) = edge_type {
+                let edge_id = neural_core::EdgeId::new((base_edge_count + i) as u64);
+                self.edge_type_index.add(edge_id, *source, *target, et);
+            }
+        }
+    }
+
+    /// Validates the integrity of the graph store after loading.
+    ///
+    /// This method performs various consistency checks to detect data corruption
+    /// or index inconsistencies. It should be called after `post_load_init()`.
+    ///
+    /// ## Checks Performed
+    /// - CSR matrix structural integrity
+    /// - Label index consistency (sample-based for large graphs)
+    /// - Edge type index count validation
+    /// - Timestamp index sort order
+    ///
+    /// ## Returns
+    /// A `ValidationResult` containing any errors or warnings found.
+    ///
+    /// ## Example
+    /// ```ignore
+    /// let store = GraphStore::load_binary("graph.ngdb")?;
+    /// let result = store.validate_post_load();
+    /// if !result.is_valid {
+    ///     for error in &result.errors {
+    ///         eprintln!("Validation error: {}", error);
+    ///     }
+    /// }
+    /// ```
+    pub fn validate_post_load(&self) -> ValidationResult {
+        let mut result = ValidationResult::ok();
+
+        // 1. Validate CSR structure
+        if let Err(e) = self.graph.validate() {
+            result.add_error(ValidationError::CsrIntegrity(e));
+        }
+
+        // 2. Sample-validate label_index (10% of nodes, min 100, max node_count)
+        let total_nodes = self.node_count();
+        if total_nodes > 0 {
+            let sample_size = (total_nodes / 10).max(100).min(total_nodes);
+            let step = total_nodes / sample_size.max(1);
+
+            for i in (0..total_nodes).step_by(step.max(1)) {
+                let node_id = NodeId::new(i as u64);
+
+                // Check if label in versioned_labels matches label_index
+                let versioned_label = self.versioned_labels
+                    .get(node_id, "_label", MAX_SNAPSHOT_ID)
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+
+                if let Some(ref label) = versioned_label {
+                    if !self.label_index.contains(node_id, label) {
+                        result.add_error(ValidationError::LabelIndexMismatch {
+                            node_id,
+                            expected_label: versioned_label.clone(),
+                            found_in_index: false,
+                        });
+                    }
+                }
+            }
+        }
+
+        // 3. Validate edge_type_index counts match dynamic_edges
+        let mut edge_type_counts: HashMap<String, usize> = HashMap::new();
+        for (_, _, edge_type) in &self.dynamic_edges {
+            if let Some(et) = edge_type {
+                *edge_type_counts.entry(et.clone()).or_default() += 1;
+            }
+        }
+
+        for (edge_type, expected_count) in &edge_type_counts {
+            let found_count = self.edge_type_index.edges_with_type_count(edge_type);
+            if found_count != *expected_count {
+                result.add_error(ValidationError::EdgeTypeIndexMismatch {
+                    edge_type: edge_type.clone(),
+                    expected_count: *expected_count,
+                    found_count,
+                });
+            }
+        }
+
+        // 4. Validate timestamp_index is sorted
+        let timestamps = &self.timestamp_index;
+        if timestamps.len() > 1 {
+            // Access internal entries through a helper
+            // Since TimestampIndex doesn't expose entries directly, we validate via sampling
+            let mut prev_tx: Option<TransactionId> = None;
+            for timestamp_str in ["1970-01-01T00:00:00Z", "2020-01-01T00:00:00Z", "2030-01-01T00:00:00Z", "2100-01-01T00:00:00Z"] {
+                if let Some(tx_id) = timestamps.get_tx_at_or_before(timestamp_str) {
+                    if let Some(prev) = prev_tx {
+                        if tx_id < prev {
+                            result.add_warning(format!(
+                                "Timestamp index may have inconsistency: tx {} found for '{}' is less than previous {}",
+                                tx_id, timestamp_str, prev
+                            ));
+                        }
+                    }
+                    prev_tx = Some(tx_id);
+                }
+            }
+        }
+
+        // 5. Validate current_tx_id is reasonable
+        if self.current_tx_id == 0 {
+            result.add_warning("current_tx_id is 0, which may cause visibility issues".to_string());
+        }
+
+        result
     }
 
     /// Creates a snapshot of the current state for non-blocking persistence.
@@ -699,42 +957,81 @@ impl GraphStore {
 
     /// Recovers the graph state by replaying operations from the WAL file.
     /// This should be called on startup, before any new mutations.
+    ///
+    /// ## WAL Entry Format (V2 with checksums)
+    /// ```text
+    /// [8 bytes: length] [4 bytes: CRC32] [N bytes: bincode payload]
+    /// ```
+    /// The length field includes the checksum (4 bytes) + payload (N bytes).
     fn recover_from_wal(&mut self, wal_path: &Path) -> Result<(), crate::wal::WalError> {
         use std::io::{BufReader, Read};
-        use bincode;
+        use crate::wal::WalError;
 
         let file = std::fs::File::open(wal_path)?;
         let mut reader = BufReader::new(file);
+        let mut current_offset: u64 = 0;
 
         loop {
+            let entry_start_offset = current_offset;
+
+            // Read length prefix
             let mut len_bytes = [0u8; 8];
             match reader.read_exact(&mut len_bytes) {
                 Ok(_) => {
                     let len = u64::from_le_bytes(len_bytes);
-                    let mut buffer = vec![0; len as usize];
+
+                    if len < 4 {
+                        // Old format without checksum - shouldn't happen with V2 entries
+                        let mut buffer = vec![0; len as usize];
+                        reader.read_exact(&mut buffer)?;
+                        let entry: LogEntry = bincode::deserialize(&buffer)?;
+                        if let Err(e) = self.apply_log_entry(&entry) {
+                            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e).into());
+                        }
+                        current_offset += 8 + len;
+                        continue;
+                    }
+
+                    // Read checksum (4 bytes)
+                    let mut checksum_bytes = [0u8; 4];
+                    reader.read_exact(&mut checksum_bytes)?;
+                    let expected_checksum = u32::from_le_bytes(checksum_bytes);
+
+                    // Read payload (len - 4 bytes)
+                    let payload_len = (len - 4) as usize;
+                    let mut buffer = vec![0; payload_len];
                     reader.read_exact(&mut buffer)?;
+
+                    // Verify checksum
+                    let computed_checksum = crc32fast::hash(&buffer);
+                    if computed_checksum != expected_checksum {
+                        return Err(WalError::ChecksumMismatch {
+                            offset: entry_start_offset,
+                            expected: expected_checksum,
+                            computed: computed_checksum,
+                        });
+                    }
+
                     let entry: LogEntry = bincode::deserialize(&buffer)?;
 
                     // Replay the log entry
                     if let Err(e) = self.apply_log_entry(&entry) {
-                        // In recovery, an error is critical.
-                        // However, for backward compatibility or corruption tolerance, 
-                        // we might log and continue. For now, panic/fail.
                         return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e).into());
                     }
+
+                    current_offset += 8 + len;
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                     // Reached end of file cleanly
                     break;
                 }
-                Err(e) => return Err(e.into()), // Other I/O errors
+                Err(e) => return Err(e.into()),
             }
         }
 
         // WAL has been successfully replayed. We can truncate it now.
-        // This means the recovered state is the new baseline.
         std::fs::File::create(wal_path)?.set_len(0)?;
-        
+
         Ok(())
     }
 
@@ -1380,7 +1677,11 @@ impl GraphStore {
                     }
                     Err(e) => {
                         // Index corrupted or incompatible - rebuild from scratch
-                        eprintln!("Warning: Failed to open full-text index '{}': {}. Rebuilding...", metadata.name, e);
+                        tracing::warn!(
+                            index_name = %metadata.name,
+                            error = %e,
+                            "Failed to open full-text index, rebuilding"
+                        );
                         self.rebuild_single_fulltext_index(&metadata, &base_path)?;
                     }
                 }
@@ -2857,5 +3158,253 @@ mod tests {
 
         // Search on nonexistent index should fail
         assert!(store.fulltext_search("nonexistent", "query", 10).is_err());
+    }
+
+    // =========================================================================
+    // Index Rebuild Tests (Database Hardening)
+    // =========================================================================
+
+    #[test]
+    fn test_property_index_rebuilt_on_load() {
+        use tempfile::NamedTempFile;
+
+        // Create a store with properties
+        let mut store = GraphStore::new_in_memory();
+        let props: HashMap<String, PropertyValue> = [
+            ("name".to_string(), PropertyValue::from("Alice")),
+            ("age".to_string(), PropertyValue::from(30i64)),
+            ("category".to_string(), PropertyValue::from("engineer")),
+        ].into_iter().collect();
+        let node_id = store.create_node(Some("Person"), props, None).unwrap();
+
+        // Verify property index works before save
+        let engineers: Vec<_> = store.nodes_with_property("category", &PropertyValue::from("engineer")).collect();
+        assert_eq!(engineers.len(), 1);
+        assert_eq!(engineers[0], node_id);
+
+        // Save and reload
+        let file = NamedTempFile::new().unwrap();
+        store.save_binary(file.path()).unwrap();
+        let loaded = GraphStore::load_binary(file.path()).unwrap();
+
+        // Verify property index works after load (rebuilt from versioned_properties)
+        let engineers_after: Vec<_> = loaded.nodes_with_property("category", &PropertyValue::from("engineer")).collect();
+        assert_eq!(engineers_after.len(), 1, "Property index should be rebuilt on load");
+        assert_eq!(engineers_after[0], node_id);
+
+        // Also verify other properties were indexed
+        let alices: Vec<_> = loaded.nodes_with_property("name", &PropertyValue::from("Alice")).collect();
+        assert_eq!(alices.len(), 1);
+
+        let thirty_year_olds: Vec<_> = loaded.nodes_with_property("age", &PropertyValue::from(30i64)).collect();
+        assert_eq!(thirty_year_olds.len(), 1);
+    }
+
+    #[test]
+    fn test_edge_type_index_rebuilt_on_load() {
+        use tempfile::NamedTempFile;
+
+        // Create a store with typed edges
+        let mut store = GraphStore::new_in_memory();
+        let node1 = store.create_node(Some("Person"), HashMap::new(), None).unwrap();
+        let node2 = store.create_node(Some("Person"), HashMap::new(), None).unwrap();
+        let node3 = store.create_node(Some("Company"), HashMap::new(), None).unwrap();
+
+        store.create_edge(node1, node2, Some("KNOWS"), None).unwrap();
+        store.create_edge(node1, node3, Some("WORKS_AT"), None).unwrap();
+        store.create_edge(node2, node3, Some("WORKS_AT"), None).unwrap();
+
+        // Verify edge type index works before save
+        let knows_edges: Vec<_> = store.edges_with_type("KNOWS").collect();
+        assert_eq!(knows_edges.len(), 1);
+        let works_at_edges: Vec<_> = store.edges_with_type("WORKS_AT").collect();
+        assert_eq!(works_at_edges.len(), 2);
+
+        // Save and reload
+        let file = NamedTempFile::new().unwrap();
+        store.save_binary(file.path()).unwrap();
+        let loaded = GraphStore::load_binary(file.path()).unwrap();
+
+        // Verify edge type index works after load (rebuilt from dynamic_edges)
+        let knows_edges_after: Vec<_> = loaded.edges_with_type("KNOWS").collect();
+        assert_eq!(knows_edges_after.len(), 1, "Edge type index should be rebuilt on load");
+
+        let works_at_edges_after: Vec<_> = loaded.edges_with_type("WORKS_AT").collect();
+        assert_eq!(works_at_edges_after.len(), 2, "Edge type index should be rebuilt on load");
+
+        // Verify the actual edges
+        assert!(knows_edges_after.contains(&(node1, node2)));
+        assert!(works_at_edges_after.contains(&(node1, node3)));
+        assert!(works_at_edges_after.contains(&(node2, node3)));
+    }
+
+    #[test]
+    fn test_all_indexes_consistent_after_load() {
+        use tempfile::NamedTempFile;
+
+        // Create a store with nodes, labels, properties, and edges
+        let mut store = GraphStore::new_in_memory();
+
+        // Create several nodes with various attributes
+        for i in 0..10 {
+            let label = if i % 2 == 0 { "Even" } else { "Odd" };
+            let category = if i < 5 { "low" } else { "high" };
+            let props: HashMap<String, PropertyValue> = [
+                ("id".to_string(), PropertyValue::from(i as i64)),
+                ("category".to_string(), PropertyValue::from(category)),
+            ].into_iter().collect();
+            store.create_node(Some(label), props, None).unwrap();
+        }
+
+        // Create some edges
+        for i in 0..9 {
+            let edge_type = if i % 2 == 0 { "NEXT" } else { "SKIP" };
+            store.create_edge(
+                NodeId::new(i),
+                NodeId::new(i + 1),
+                Some(edge_type),
+                None,
+            ).unwrap();
+        }
+
+        // Save and reload
+        let file = NamedTempFile::new().unwrap();
+        store.save_binary(file.path()).unwrap();
+        let loaded = GraphStore::load_binary(file.path()).unwrap();
+
+        // Verify label index
+        assert_eq!(loaded.nodes_with_label("Even").count(), 5);
+        assert_eq!(loaded.nodes_with_label("Odd").count(), 5);
+
+        // Verify property index
+        assert_eq!(loaded.nodes_with_property("category", &PropertyValue::from("low")).count(), 5);
+        assert_eq!(loaded.nodes_with_property("category", &PropertyValue::from("high")).count(), 5);
+
+        // Verify edge type index
+        assert_eq!(loaded.edges_with_type("NEXT").count(), 5);
+        assert_eq!(loaded.edges_with_type("SKIP").count(), 4);
+
+        // Verify individual node properties
+        for i in 0..10 {
+            let node_id = NodeId::new(i);
+            let expected_label = if i % 2 == 0 { "Even" } else { "Odd" };
+            assert_eq!(loaded.get_label(node_id), Some(expected_label));
+
+            let expected_category = if i < 5 { "low" } else { "high" };
+            assert_eq!(
+                loaded.get_property(node_id, "category"),
+                Some(&PropertyValue::from(expected_category))
+            );
+        }
+    }
+
+    // =========================================================================
+    // Validation Tests (Database Hardening)
+    // =========================================================================
+
+    #[test]
+    fn test_validate_post_load_clean() {
+        // Create a store with various data
+        let mut store = GraphStore::new_in_memory();
+
+        for i in 0..10 {
+            let label = if i % 2 == 0 { "Even" } else { "Odd" };
+            let props: HashMap<String, PropertyValue> = [
+                ("id".to_string(), PropertyValue::from(i as i64)),
+            ].into_iter().collect();
+            store.create_node(Some(label), props, None).unwrap();
+        }
+
+        for i in 0..9 {
+            store.create_edge(
+                NodeId::new(i),
+                NodeId::new(i + 1),
+                Some("NEXT"),
+                None,
+            ).unwrap();
+        }
+
+        // Validate should pass
+        let result = store.validate_post_load();
+        assert!(result.is_valid, "Validation should pass for a clean store: {:?}", result.errors);
+        assert!(result.errors.is_empty(), "Should have no errors");
+    }
+
+    #[test]
+    fn test_validate_post_load_after_reload() {
+        use tempfile::NamedTempFile;
+
+        // Create a store with data
+        let mut store = GraphStore::new_in_memory();
+
+        for i in 0..50 {
+            let label = match i % 3 {
+                0 => "Type_A",
+                1 => "Type_B",
+                _ => "Type_C",
+            };
+            let props: HashMap<String, PropertyValue> = [
+                ("value".to_string(), PropertyValue::from(i as i64)),
+            ].into_iter().collect();
+            store.create_node(Some(label), props, None).unwrap();
+        }
+
+        for i in 0..49 {
+            let edge_type = if i % 2 == 0 { "LINK" } else { "REF" };
+            store.create_edge(
+                NodeId::new(i),
+                NodeId::new(i + 1),
+                Some(edge_type),
+                None,
+            ).unwrap();
+        }
+
+        // Save and reload
+        let file = NamedTempFile::new().unwrap();
+        store.save_binary(file.path()).unwrap();
+        let loaded = GraphStore::load_binary(file.path()).unwrap();
+
+        // Validate should pass after reload
+        let result = loaded.validate_post_load();
+        assert!(result.is_valid, "Validation should pass after reload: {:?}", result.errors);
+        assert!(result.errors.is_empty(), "Should have no errors after reload");
+    }
+
+    #[test]
+    fn test_validation_result_methods() {
+        let mut result = ValidationResult::ok();
+        assert!(result.is_valid);
+        assert!(result.errors.is_empty());
+        assert!(result.warnings.is_empty());
+
+        result.add_warning("This is a warning".to_string());
+        assert!(result.is_valid); // Warnings don't invalidate
+        assert_eq!(result.warnings.len(), 1);
+
+        result.add_error(ValidationError::CsrIntegrity("Test error".to_string()));
+        assert!(!result.is_valid); // Error invalidates
+        assert_eq!(result.errors.len(), 1);
+    }
+
+    #[test]
+    fn test_validation_error_display() {
+        let error = ValidationError::LabelIndexMismatch {
+            node_id: NodeId::new(42),
+            expected_label: Some("Person".to_string()),
+            found_in_index: false,
+        };
+        let display = format!("{}", error);
+        assert!(display.contains("42"));
+        assert!(display.contains("Person"));
+
+        let error = ValidationError::EdgeTypeIndexMismatch {
+            edge_type: "KNOWS".to_string(),
+            expected_count: 5,
+            found_count: 3,
+        };
+        let display = format!("{}", error);
+        assert!(display.contains("KNOWS"));
+        assert!(display.contains("5"));
+        assert!(display.contains("3"));
     }
 }

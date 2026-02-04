@@ -2,6 +2,20 @@
 
 This document describes the automatic persistence implementation for NeuralGraphDB, split between the storage library and application layers.
 
+**Version:** 2.0 (Sprint 66 - Database Hardening)
+
+---
+
+## Overview
+
+NeuralGraphDB provides comprehensive persistence with:
+
+- **Write-Ahead Log (WAL)** - Every mutation logged with CRC32 checksums
+- **Binary Snapshots** - Full graph snapshots with SHA256 checksums
+- **Delta Checkpoints** - Incremental persistence for efficient saves
+- **Automatic Recovery** - Rebuild indexes from authoritative sources on load
+- **Post-Load Validation** - Verify data integrity after loading
+
 ---
 
 ## Phase 1: Library Layer (neural-storage)
@@ -16,7 +30,7 @@ This document describes the automatic persistence implementation for NeuralGraph
 
 ### 1.1 Enhanced Error Types
 
-**Location**: `persistence.rs:77-130`
+**Location**: `persistence.rs`
 
 ```rust
 #[derive(Debug, Error)]
@@ -47,6 +61,12 @@ pub enum PersistenceError {
 
     #[error("Temp file cleanup failed (non-fatal): {0}")]
     TempFileCleanupFailed(std::io::Error),
+
+    #[error("File checksum mismatch - data may be corrupted")]
+    ChecksumMismatch,  // NEW in Sprint 66
+
+    #[error("Delta mismatch: expected base tx {expected}, found {found}")]
+    DeltaMismatch { expected: u64, found: u64 },  // NEW in Sprint 66
 }
 
 impl PersistenceError {
@@ -408,17 +428,190 @@ Affected handlers:
 
 ---
 
+---
+
+## Phase 3: Data Integrity (Sprint 66)
+
+### 3.1 WAL Checksums (CRC32)
+
+Every WAL entry now includes a CRC32 checksum for corruption detection.
+
+**New WAL Entry Format:**
+
+```
+┌─────────────────────────────────┐
+│ Length: u64 (8 bytes, LE)       │  ← Total length including checksum
+├─────────────────────────────────┤
+│ CRC32: u32 (4 bytes, LE)        │  ← NEW: Checksum of payload
+├─────────────────────────────────┤
+│ Payload: bincode LogEntry       │
+│ (length - 4 bytes)              │
+└─────────────────────────────────┘
+```
+
+**Backward Compatibility:** Old WAL files (without checksums) are detected by comparing payload length to what a checksum-aware entry would expect. Legacy entries are processed without verification.
+
+**Error Handling:**
+
+```rust
+#[error("Checksum mismatch at offset {offset}: expected {expected:#x}, got {computed:#x}")]
+ChecksumMismatch { offset: u64, expected: u32, computed: u32 }
+```
+
+### 3.2 Binary Snapshot Checksums (SHA256)
+
+Snapshot files now include SHA256 checksums to detect file corruption.
+
+**New File Format (VERSION 2):**
+
+```
+┌─────────────────────────────────┐
+│ Magic: "NGDB" (4 bytes)         │
+├─────────────────────────────────┤
+│ Version: u32 (4 bytes, LE) = 2  │
+├─────────────────────────────────┤
+│ SHA256: [u8; 32] (32 bytes)     │  ← NEW: Checksum of data
+├─────────────────────────────────┤
+│ Data: bincode GraphStore        │
+│ (variable length)               │
+└─────────────────────────────────┘
+```
+
+**Backward Compatibility:** VERSION 1 files (without checksum) are still supported. The loader detects version and skips checksum verification for V1 files.
+
+### 3.3 Post-Load Validation
+
+After loading a snapshot, the system validates data integrity:
+
+```rust
+pub struct ValidationResult {
+    pub is_valid: bool,
+    pub errors: Vec<ValidationError>,
+    pub warnings: Vec<String>,
+}
+
+pub enum ValidationError {
+    LabelIndexMismatch { node_id: NodeId, expected: Option<String>, found: bool },
+    PropertyIndexMismatch { node_id: NodeId, key: String },
+    EdgeTypeIndexMismatch { edge_type: String, expected: usize, found: usize },
+    CsrIntegrity(String),
+}
+
+impl GraphStore {
+    /// Validates graph integrity after loading
+    pub fn validate_post_load(&self) -> ValidationResult;
+}
+```
+
+### 3.4 Index Rebuild on Load
+
+All indexes are rebuilt from authoritative sources during `post_load_init()`:
+
+```rust
+impl GraphStore {
+    pub fn post_load_init(&mut self) {
+        self.reverse_graph = CscMatrix::from_csr(&self.graph);
+        self.transaction_manager = TransactionManager::new();
+
+        // Rebuild ALL indexes from authoritative sources
+        self.rebuild_label_index();      // From versioned_labels
+        self.rebuild_property_index();   // From versioned_properties
+        self.rebuild_edge_type_index();  // From dynamic_edges
+
+        if let Err(e) = self.rebuild_fulltext_indexes() {
+            tracing::warn!("Failed to rebuild full-text indexes: {}", e);
+        }
+    }
+}
+```
+
+---
+
+## Phase 4: Delta Persistence (Sprint 66)
+
+### 4.1 Delta Checkpoints
+
+Delta checkpoints store only the changes since the last full snapshot, enabling efficient incremental saves.
+
+```rust
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeltaCheckpoint {
+    /// Transaction ID when the base snapshot was taken
+    pub base_tx_id: TransactionId,
+    /// Transaction ID after all changes in this delta
+    pub end_tx_id: TransactionId,
+    /// The actual changes (WAL entries)
+    pub changes: Vec<LogEntry>,
+}
+
+impl DeltaCheckpoint {
+    pub fn new(base_tx_id: TransactionId, end_tx_id: TransactionId, changes: Vec<LogEntry>) -> Self;
+    pub fn save(&self, path: impl AsRef<Path>) -> Result<(), PersistenceError>;
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, PersistenceError>;
+}
+```
+
+### 4.2 GraphStore Delta Methods
+
+```rust
+impl GraphStore {
+    /// Creates a delta checkpoint with changes since the given transaction
+    pub fn create_delta_checkpoint(&self, since_tx: TransactionId) -> DeltaCheckpoint;
+
+    /// Applies a delta checkpoint to bring the store up to date
+    pub fn apply_delta(&mut self, delta: &DeltaCheckpoint) -> Result<(), PersistenceError>;
+
+    /// Saves a delta checkpoint to the deltas directory
+    pub fn save_delta(&self, base_path: impl AsRef<Path>, since_tx: TransactionId)
+        -> Result<PathBuf, PersistenceError>;
+
+    /// Lists available delta files in the deltas directory
+    pub fn list_deltas(base_path: impl AsRef<Path>) -> Result<Vec<PathBuf>, PersistenceError>;
+}
+```
+
+### 4.3 File Structure
+
+```
+data/
+├── graph.ngdb                    # Full snapshot
+└── deltas/
+    ├── delta_1000_2000.ngdb      # Changes from tx 1000 to 2000
+    ├── delta_2000_3000.ngdb      # Changes from tx 2000 to 3000
+    └── delta_3000_3500.ngdb      # Changes from tx 3000 to 3500
+```
+
+### 4.4 Usage Example
+
+```rust
+// Create a delta since last save
+let delta = store.create_delta_checkpoint(last_saved_tx_id);
+delta.save("data/deltas/delta_1000_2000.ngdb")?;
+
+// Or use the convenience method
+let delta_path = store.save_delta("data/graph.ngdb", last_saved_tx_id)?;
+
+// Apply delta to a loaded snapshot
+let delta = DeltaCheckpoint::load("data/deltas/delta_1000_2000.ngdb")?;
+store.apply_delta(&delta)?;
+```
+
+---
+
 ## Summary
 
 ### Durability Guarantees
 
 | Layer | Guarantee |
 |-------|-----------|
-| WAL | Every mutation logged before applying |
+| WAL | Every mutation logged with CRC32 checksum before applying |
 | Atomic writes | write-tmp-rename prevents corruption |
 | fsync | Data hits disk before success |
 | Backup rotation | N previous versions retained |
 | Graceful shutdown | Final save before exit |
+| **Snapshot checksum** | SHA256 detects file corruption on load |
+| **Index rebuild** | All indexes rebuilt from authoritative sources |
+| **Delta persistence** | Incremental saves reduce I/O overhead |
 
 ### Performance Characteristics
 
@@ -433,7 +626,14 @@ Affected handlers:
 
 | File | Lines | Changes |
 |------|-------|---------|
-| `persistence.rs` | ~850 | Complete rewrite with atomic saves, backups, snapshots |
-| `graph_store.rs` | +50 | `snapshot()`, `post_load_init()`, new getters |
-| `lib.rs` | +2 | New exports |
+| `persistence.rs` | ~1000 | Atomic saves, backups, snapshots, SHA256 checksums, delta persistence |
+| `graph_store.rs` | +150 | `snapshot()`, `post_load_init()`, validation, index rebuild |
+| `wal.rs` | +50 | CRC32 checksums for WAL entries |
+| `wal_reader.rs` | +30 | Checksum verification on recovery |
+| `config.rs` | ~150 | NEW: Unified TOML configuration |
+| `logging.rs` | ~80 | NEW: Structured logging with tracing |
+| `memory.rs` | ~200 | NEW: Memory tracking and limits |
+| `constraints.rs` | ~200 | NEW: Unique constraint system |
+| `statistics.rs` | ~320 | NEW: Graph statistics collection |
+| `lib.rs` | +20 | New module exports |
 | `server.rs` | +100 | Config, async RwLock, non-blocking saves, graceful shutdown |
