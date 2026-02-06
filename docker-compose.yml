@@ -38,33 +38,6 @@ services:
     networks:
       - neuralgraph-network
 
-  ng-db-papers:
-    image: neuralgraph:0.1.0
-    container_name: ng-db-papers
-    command: ["serve", "--host", "0.0.0.0", "--port", "3000"]
-    ports:
-      - "3001:3000"
-      - "50052:50051"
-    volumes:
-      - ./data-papers:/data
-    working_dir: /data
-    environment:
-      - NGDB_PATH=/data/graph.ngdb
-      - NGDB_SAVE_INTERVAL=60
-      - NGDB_SAVE_THRESHOLD=5
-      - NGDB_BACKUP_COUNT=3
-      - NGDB_SHUTDOWN_TIMEOUT=30
-    restart: unless-stopped
-    stop_grace_period: 30s
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    networks:
-      - neuralgraph-network
-
 networks:
   neuralgraph-network:
     driver: bridge
