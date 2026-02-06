@@ -690,15 +690,45 @@ MATCH (node)-[:AUTHORED_BY]->(author:Person)
 RETURN node.title, author.name, score
 ```
 
+### Initializing the Vector Index
+
+Before storing vectors, initialize the HNSW index with your embedding dimension:
+
+```cypher
+-- Initialize for BERT embeddings (768 dimensions)
+CALL neural.vectorInit(768)
+
+-- Initialize for OpenAI text-embedding-3-small (1536 dimensions)
+CALL neural.vectorInit(1536)
+
+-- Initialize for Qwen3-Embedding-8B (3584 dimensions)
+CALL neural.vectorInit(3584)
+```
+
+The initialization is idempotent - calling it again with the same dimension is a no-op.
+
 ### Adding Vectors
 
-Vectors are typically added during data import:
+Vectors are automatically indexed when stored as properties. Use numeric arrays:
+
+```cypher
+-- Create node with vector property (auto-indexed)
+CREATE (n:Document {title: "ML Paper", embedding: [0.1, 0.2, 0.3, ...]})
+
+-- Update vector property (auto-indexed)
+MATCH (n:Document) WHERE n.title = "ML Paper"
+SET n.embedding = [0.15, 0.25, 0.35, ...]
+```
+
+You can also import vectors via CSV:
 
 ```csv
 id,label,title,embedding
 1,Document,Introduction to AI,"[0.1, 0.2, 0.3, ...]"
 2,Document,Machine Learning Basics,"[0.15, 0.25, 0.28, ...]"
 ```
+
+**Important:** The vector dimension must match the initialized index dimension, or an error will occur.
 
 ### Vector Quantization
 

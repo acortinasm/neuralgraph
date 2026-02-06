@@ -1163,6 +1163,8 @@ mod tests {
     #[test]
     fn test_binary_serialization_with_vectors() {
         let mut store = GraphStore::new_in_memory();
+        // Initialize vector index before creating nodes with vector properties
+        store.init_vector_index(128);
         for i in 0..10u64 {
             let vector: Vec<f32> = (0..128).map(|j| (i * 128 + j) as f32 / 1000.0).collect();
             store

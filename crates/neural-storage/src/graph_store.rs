@@ -1086,6 +1086,24 @@ impl GraphStore {
                 for (key, value) in properties {
                     self.property_index.add(*node_id, key, value);
                     self.versioned_properties.set(*node_id, key, value.clone(), tx_id);
+
+                    // Auto-index vector properties in HNSW
+                    if let PropertyValue::Vector(vec) = value {
+                        if let Some(ref mut index) = self.vector_index {
+                            if vec.len() == index.dimension() {
+                                index.add(*node_id, vec);
+                            } else {
+                                return Err(format!(
+                                    "Vector dimension mismatch: property has {} dimensions, index expects {}",
+                                    vec.len(), index.dimension()
+                                ));
+                            }
+                        } else {
+                            return Err(
+                                "Cannot store vector property: vector index not initialized. Call neural.vector.init(dimension) first.".to_string()
+                            );
+                        }
+                    }
                 }
 
                 // Increment tx_id for next operation
@@ -1124,6 +1142,24 @@ impl GraphStore {
                 // Add new value to index and set versioned property
                 self.property_index.add(*node_id, key, value);
                 self.versioned_properties.set(*node_id, key, value.clone(), tx_id);
+
+                // Auto-index vector properties in HNSW
+                if let PropertyValue::Vector(vec) = value {
+                    if let Some(ref mut index) = self.vector_index {
+                        if vec.len() == index.dimension() {
+                            index.add(*node_id, vec);
+                        } else {
+                            return Err(format!(
+                                "Vector dimension mismatch: property has {} dimensions, index expects {}",
+                                vec.len(), index.dimension()
+                            ));
+                        }
+                    } else {
+                        return Err(
+                            "Cannot store vector property: vector index not initialized. Call neural.vector.init(dimension) first.".to_string()
+                        );
+                    }
+                }
 
                 self.current_tx_id += 1;
                 Ok(())

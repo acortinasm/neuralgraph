@@ -353,6 +353,53 @@ pub fn execute_statement_struct(
 
                     Ok(StatementResult::Query(query_result))
                 }
+                "neural.vectorInit" => {
+                    // CALL neural.vectorInit(dimension)
+                    // Initializes the HNSW vector index with the given dimension.
+                    // Idempotent: no-op if already initialized with same dimension, error if different.
+                    if call.args.len() != 1 {
+                        return Err(ExecutionError::ExecutionError(
+                            "neural.vectorInit requires 1 argument: dimension (integer)".into()
+                        ));
+                    }
+
+                    // Parse dimension
+                    let empty_bindings = Bindings::new();
+                    let dim_val = eval::evaluate(&call.args[0], &empty_bindings, store, params)?;
+                    let dimension: usize = match dim_val {
+                        Value::Int(i) if i > 0 => i as usize,
+                        _ => return Err(ExecutionError::ExecutionError(
+                            "Dimension must be a positive integer".into()
+                        )),
+                    };
+
+                    // Check if already initialized
+                    if let Some(existing_dim) = store.vector_dimension() {
+                        if existing_dim == dimension {
+                            // Already initialized with same dimension - no-op
+                            return Ok(StatementResult::Call {
+                                procedure: full_name,
+                                result: format!("Vector index already initialized with dimension {}", dimension),
+                            });
+                        } else {
+                            // Different dimension - error
+                            return Err(ExecutionError::ExecutionError(
+                                format!(
+                                    "Vector index already initialized with dimension {}. Cannot reinitialize with dimension {}.",
+                                    existing_dim, dimension
+                                )
+                            ));
+                        }
+                    }
+
+                    // Initialize the vector index
+                    store.init_vector_index(dimension);
+
+                    Ok(StatementResult::Call {
+                        procedure: full_name,
+                        result: format!("Vector index initialized with dimension {}", dimension),
+                    })
+                }
                 "neural.fulltext.createIndex" => {
                     // CALL neural.fulltext.createIndex('IndexName', 'Label', ['prop1', 'prop2'])
                     // CALL neural.fulltext.createIndex('IndexName', 'Label', ['props'], 'language')
@@ -1505,5 +1552,101 @@ mod tests {
             }
             _ => panic!("Expected Query result, got {:?}", result),
         }
+    }
+
+    #[test]
+    fn test_neural_vector_init_procedure() {
+        let mut store = GraphStore::builder().build();
+
+        // Initially no vector index
+        assert!(store.vector_dimension().is_none());
+
+        // Initialize vector index
+        let result = execute_statement(&mut store, "CALL neural.vectorInit(768)").unwrap();
+        match result {
+            StatementResult::Call { procedure, result } => {
+                assert_eq!(procedure, "neural.vectorInit");
+                assert!(result.contains("initialized"));
+                assert!(result.contains("768"));
+            }
+            _ => panic!("Expected Call result"),
+        }
+
+        // Verify initialization
+        assert_eq!(store.vector_dimension(), Some(768));
+
+        // Idempotent - same dimension is no-op
+        let result2 = execute_statement(&mut store, "CALL neural.vectorInit(768)").unwrap();
+        match result2 {
+            StatementResult::Call { result, .. } => {
+                assert!(result.contains("already initialized"));
+            }
+            _ => panic!("Expected Call result"),
+        }
+
+        // Different dimension should error
+        let result3 = execute_statement(&mut store, "CALL neural.vectorInit(512)");
+        assert!(result3.is_err());
+        let err = result3.unwrap_err();
+        assert!(err.to_string().contains("already initialized"));
+    }
+
+    #[test]
+    fn test_auto_vector_indexing_on_create() {
+        let mut store = GraphStore::builder().build();
+
+        // Initialize vector index first
+        execute_statement(&mut store, "CALL neural.vectorInit(3)").unwrap();
+
+        // Create a node with a vector property - should auto-index
+        // Note: We need to use the Rust API since NGQL doesn't have vector literal syntax yet
+        use neural_core::{NodeId, PropertyValue};
+        let node_id = store.create_node(
+            Some("Document"),
+            vec![
+                ("title".to_string(), PropertyValue::String("Test".to_string())),
+                ("embedding".to_string(), PropertyValue::Vector(vec![1.0, 0.0, 0.0])),
+            ],
+            None,
+        ).unwrap();
+
+        // The vector should be searchable via neural.search
+        let mut params: eval::Parameters = std::collections::HashMap::new();
+        params.insert("vec".to_string(), Value::List(vec![
+            Value::Float(1.0),
+            Value::Float(0.0),
+            Value::Float(0.0),
+        ]));
+
+        let result = execute_statement_with_params(
+            &mut store,
+            "CALL neural.search($vec, 'cosine', 1)",
+            Some(&params),
+            &mut None,
+        ).unwrap();
+
+        match result {
+            StatementResult::Query(res) => {
+                assert_eq!(res.row_count(), 1);
+                assert_eq!(res.rows()[0].get("node"), Some(&Value::Node(node_id.as_u64())));
+            }
+            _ => panic!("Expected Query result"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "vector index not initialized")]
+    fn test_vector_indexing_requires_init() {
+        let mut store = GraphStore::builder().build();
+
+        // Try to create a node with vector without initializing index - should panic
+        use neural_core::PropertyValue;
+        let _result = store.create_node(
+            Some("Document"),
+            vec![
+                ("embedding".to_string(), PropertyValue::Vector(vec![1.0, 0.0, 0.0])),
+            ],
+            None,
+        );
     }
 }

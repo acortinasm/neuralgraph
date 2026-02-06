@@ -876,6 +876,18 @@ RETURN n
 ### 4.7 Búsqueda Vectorial - Sprint 56
 
 ```cypher
+-- Inicializar índice vectorial (requerido antes de almacenar vectores)
+CALL neural.vectorInit(768)       -- Para embeddings BERT
+CALL neural.vectorInit(1536)      -- Para OpenAI text-embedding-3-small
+CALL neural.vectorInit(3584)      -- Para Qwen3-Embedding-8B
+
+-- Crear nodos con propiedades vectoriales (auto-indexados)
+CREATE (n:Document {title: "ML Paper", embedding: [0.1, 0.2, ...]})
+
+-- Actualizar propiedad vectorial (auto-indexado)
+MATCH (n:Document) WHERE n.title = "ML Paper"
+SET n.embedding = [0.3, 0.4, ...]
+
 -- Búsqueda semántica con procedimiento
 CALL neural.search($queryVector, 'cosine', 10)
 YIELD node, score
@@ -892,6 +904,8 @@ MATCH (node)-[:AUTHORED_BY]->(author:Person)
 RETURN node.title, author.name, score
 ORDER BY score DESC
 ```
+
+**Nota:** El índice vectorial debe inicializarse antes de almacenar propiedades vectoriales. Los vectores se indexan automáticamente al escribirse con CREATE o SET.
 
 ### 4.8 Transacciones
 

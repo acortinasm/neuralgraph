@@ -42,6 +42,10 @@ fn test_create_node_with_array_property() {
 fn test_create_node_with_numeric_array() {
     let mut store = GraphStore::builder().build();
 
+    // Initialize vector index first (required for vector properties)
+    let init_result = execute_statement(&mut store, "CALL neural.vectorInit(4)");
+    assert!(init_result.is_ok(), "Vector init failed: {:?}", init_result.err());
+
     // Numeric arrays become Vectors (for embeddings)
     let query = r#"CREATE (n:Doc {embedding: [0.1, 0.2, 0.3, 0.4]})"#;
     let result = execute_statement(&mut store, query);

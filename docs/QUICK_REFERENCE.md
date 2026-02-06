@@ -130,13 +130,26 @@ English, Spanish, French, German, Italian, Portuguese, Dutch, Swedish, Norwegian
 ## Vector Search
 
 ```cypher
+-- Initialize vector index (required before storing vectors)
+CALL neural.vectorInit(768)       -- dimension = 768 (e.g., for BERT embeddings)
+CALL neural.vectorInit(3584)      -- dimension = 3584 (e.g., for Qwen3-Embedding-8B)
+
+-- Create nodes with vector properties (auto-indexed)
+CREATE (n:Document {title: "ML Paper", embedding: [0.1, 0.2, ...]})
+
+-- Update vector property (auto-indexed)
+MATCH (n:Document) WHERE n.title = "ML Paper"
+SET n.embedding = [0.3, 0.4, ...]
+
 -- Find similar items
 CALL neural.search($embedding, 'cosine', 10)
 YIELD node, score
 RETURN node.title, score
 
--- Metrics: 'cosine', 'euclidean', 'dot_product'
+-- Metrics: 'cosine', 'euclidean', 'dot_product', 'l2'
 ```
+
+**Note:** Vector index must be initialized before storing vector properties. Vectors are automatically indexed when written via CREATE or SET.
 
 ### Quantization (Memory Savings)
 | Method | Savings | Precision |
