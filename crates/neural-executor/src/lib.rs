@@ -295,16 +295,63 @@ pub fn execute_statement_struct(
             match full_name.as_str() {
                 "neural.search" => {
                     // CALL neural.search($vec, 'metric', k)
+                    // Returns nodes ordered by similarity score
                     if call.args.len() != 3 {
                         return Err(ExecutionError::ExecutionError(
                             "neural.search requires 3 arguments: vector, metric, k".into()
                         ));
                     }
-                    // For now, return placeholder - actual implementation would call VectorIndex
-                    Ok(StatementResult::Call {
-                        procedure: full_name,
-                        result: "Vector search executed".to_string(),
-                    })
+
+                    // Evaluate the vector argument (can be a parameter or literal list)
+                    let empty_bindings = Bindings::new();
+                    let vec_val = eval::evaluate(&call.args[0], &empty_bindings, store, params)?;
+                    let query_vec: Vec<f32> = match vec_val {
+                        Value::List(items) => {
+                            items.iter().map(|v| match v {
+                                Value::Int(i) => Ok(*i as f32),
+                                Value::Float(f) => Ok(*f as f32),
+                                _ => Err(ExecutionError::ExecutionError(
+                                    "Vector elements must be numbers".into()
+                                )),
+                            }).collect::<Result<Vec<f32>>>()?
+                        }
+                        _ => return Err(ExecutionError::ExecutionError(
+                            "First argument must be a vector (list of numbers)".into()
+                        )),
+                    };
+
+                    // Parse metric (currently informational - store uses cosine by default)
+                    let _metric = match &call.args[1] {
+                        neural_parser::Expression::Literal(neural_parser::Literal::String(s)) => s.clone(),
+                        _ => return Err(ExecutionError::ExecutionError(
+                            "Second argument (metric) must be a string: 'cosine', 'euclidean', 'dot_product', or 'l2'".into()
+                        )),
+                    };
+
+                    // Parse k (number of results)
+                    let k_val = eval::evaluate(&call.args[2], &empty_bindings, store, params)?;
+                    let k: usize = match k_val {
+                        Value::Int(i) if i > 0 => i as usize,
+                        _ => return Err(ExecutionError::ExecutionError(
+                            "Third argument (k) must be a positive integer".into()
+                        )),
+                    };
+
+                    // Perform vector search
+                    let results = store.vector_search(&query_vec, k);
+
+                    // Build QueryResult with node and similarity columns
+                    let columns = vec!["node".to_string(), "similarity".to_string()];
+                    let mut query_result = QueryResult::with_capacity(columns.clone(), results.len());
+
+                    for (node_id, similarity) in results {
+                        let mut row = Row::with_columns(columns.clone());
+                        row.set("node", Value::Node(node_id.as_u64()));
+                        row.set("similarity", Value::Float(similarity as f64));
+                        query_result.add_row(row);
+                    }
+
+                    Ok(StatementResult::Query(query_result))
                 }
                 "neural.fulltext.createIndex" => {
                     // CALL neural.fulltext.createIndex('IndexName', 'Label', ['prop1', 'prop2'])
@@ -1408,6 +1455,55 @@ mod tests {
                 assert_eq!(res.rows()[0].get("n.name"), Some(&Value::String("Alice".to_string())));
             }
             _ => panic!("Expected Query result"),
+        }
+    }
+
+    #[test]
+    fn test_neural_search_procedure() {
+        use std::collections::HashMap;
+
+        // Create a store with some nodes that have embeddings
+        let mut store = GraphStore::builder()
+            .add_labeled_node(1u64, "Document", [("title", "Machine Learning")])
+            .add_labeled_node(2u64, "Document", [("title", "Deep Learning")])
+            .add_labeled_node(3u64, "Document", [("title", "Cooking Recipes")])
+            .build();
+
+        // Initialize vector index and add embeddings (simple 3D vectors for testing)
+        store.init_vector_index(3);
+        store.add_vector(neural_core::NodeId::new(1), &[1.0, 0.0, 0.0]);
+        store.add_vector(neural_core::NodeId::new(2), &[0.9, 0.1, 0.0]);
+        store.add_vector(neural_core::NodeId::new(3), &[0.0, 0.0, 1.0]);
+
+        // Test with parameter
+        let mut params: eval::Parameters = HashMap::new();
+        params.insert("vec".to_string(), Value::List(vec![
+            Value::Float(1.0),
+            Value::Float(0.0),
+            Value::Float(0.0),
+        ]));
+
+        let result = execute_statement_with_params(
+            &mut store,
+            "CALL neural.search($vec, 'cosine', 2)",
+            Some(&params),
+            &mut None,
+        ).unwrap();
+
+        match result {
+            StatementResult::Query(res) => {
+                assert_eq!(res.row_count(), 2);
+                // First result should be node 1 (exact match)
+                let row0 = &res.rows()[0];
+                assert_eq!(row0.get("node"), Some(&Value::Node(1)));
+                // Second result should be node 2 (close match)
+                let row1 = &res.rows()[1];
+                assert_eq!(row1.get("node"), Some(&Value::Node(2)));
+                // Verify similarity scores are present
+                assert!(matches!(row0.get("similarity"), Some(Value::Float(_))));
+                assert!(matches!(row1.get("similarity"), Some(Value::Float(_))));
+            }
+            _ => panic!("Expected Query result, got {:?}", result),
         }
     }
 }
